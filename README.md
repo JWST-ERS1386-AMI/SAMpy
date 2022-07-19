@@ -1,7 +1,7 @@
 # SAMpy
 A Fourier-Plane Pipeline for NIRISS AMI Data (and more!)
 
-See Sallum & Eisner 2017 for a description of the pipeline that has morphed into SAMpy, and some 2022 SPIE proceedings (once they exist). This came together thanks to several people (including, but not limited to the following alphabetical list):
+See Sallum & Eisner 2017 and some 2022 SPIE proceedings (once they exist) for descriptions of the pipeline that morphed into SAMpy, and SAMpy itself, respectively. This came together thanks to several people (including, but not limited to the following alphabetical list):
 
 - Josh Eisner
 - Kenzie Lach

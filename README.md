@@ -9,7 +9,7 @@ See Sallum & Eisner 2017 for a description of the pipeline that has morphed into
 - Steph Sallum
 - Christina Vides
 
-This version just shows an example for the JWST/NIRISS mask, but you can use this for arbitrary mask designs. And we'll be uploading examples for some ground based setups, e.g. VLT/SPHERE, soon!
+This version has just one example notebook for the JWST/NIRISS mask, but you can use the code for arbitrary mask designs. We'll be uploading examples for some ground based setups (e.g. VLT/SPHERE, Keck/NIRC2) soon!
 
 To get started, clone the repository:
 

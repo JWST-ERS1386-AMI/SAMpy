@@ -3,11 +3,11 @@ A Fourier-Plane Pipeline for NIRISS AMI Data (and more!)
 
 See Sallum & Eisner 2017 for a description of the pipeline that has morphed into SAMpy, through the work of several contributors (including, but not limited to the following who are listed alphabetically):
 
--Josh Eisner
--Kenzie Lach
--Shrishmoy Ray
--Steph Sallum
--Christina Vides
+- Josh Eisner
+- Kenzie Lach
+- Shrishmoy Ray
+- Steph Sallum
+- Christina Vides
 
 This version just shows an example for the JWST/NIRISS mask, but you can use this for arbitrary mask designs. And we'll be uploading examples for some ground based setups, e.g. VLT/SPHERE, soon!
 

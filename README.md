@@ -30,6 +30,6 @@ conda activate SAMpy
 jupyter notebook
 ```
 
-Then go ahead and open up the notebook SAMpy_ABDor_CPs+V2s_example.ipynb to see how things work. 
+Then go ahead and open up the notebook SAMpy_ABDor_example_CP_V2_T3A.ipynb to see how things work. 
 
 

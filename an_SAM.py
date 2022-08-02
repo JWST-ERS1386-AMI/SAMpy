@@ -1,7 +1,7 @@
 from tqdm import tqdm
 from datetime import datetime
 from scipy.ndimage import map_coordinates
-from supergauss_new import supergauss_fracw
+from .red_SAM import supergauss_fracw
 import cmath
 import math
 import os
@@ -11,6 +11,9 @@ from scipy import ndimage
 from matplotlib import pyplot as plt
 from scipy import interpolate
 import pdb
+import copy
+#import h5py
+
 
 
 
@@ -113,7 +116,7 @@ def find_cvis_pix(mdir,cvistype='multi'):
             bclist.append(ps)
     return bclist
 
-def find_tris_multi(ccs,cdir,ny=256,nx=256): #Function 2 definition
+def find_tris_multi(ccs,cdir,ny=256,nx=256,meters=False,pscam=0.065,lamc=3.8): #Function 2 definition
     """
     calculates sampling coordinates for "Monnier"
     closure phase calculation method
@@ -153,6 +156,12 @@ def find_tris_multi(ccs,cdir,ny=256,nx=256): #Function 2 definition
             pyfits.writeto(ifile,g)
         else: g = pyfits.getdata(ifile)
         ccall.append(g)
+    if meters: 
+        ccall2 = np.array(copy.deepcopy(ccall))
+        psc = 1.0/(float(nx)*pscam)*206265.0*lamc*1e-06
+        ccall2 = ccall2 - int(ny/2)
+        ccall2 = ccall2*psc
+        return ccall2
     return np.array(ccall)
 
 def make_blens(mdir):
@@ -163,6 +172,16 @@ def make_blens(mdir):
     buvs = np.array(pyfits.getdata(mdir+'bl_uvs.fits'))
     blens = np.sqrt(buvs[:,0]**2+buvs[:,1]**2)
     return blens
+
+
+def make_cplens(mdir):
+    """
+    calculates baseline lengths from uv sampling coordinates
+    for plotting purposes
+    """
+    cpuvs = np.array(pyfits.getdata(mdir+'cp_uvs.fits'))
+    cplens = np.sqrt(cpuvs[:,:,0]**2+cpuvs[:,:,1]**2)
+    return cplens
 
 def calc_cps_single(ims,mdir,nx=256,ny=256,display=False,useW=True):
     """
@@ -187,18 +206,21 @@ def calc_cps_single(ims,mdir,nx=256,ny=256,display=False,useW=True):
     cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW)
     return bs_all, cps, cov, var, stdE
 
-def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True): #Master function
+def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filename=''): #Master function
     """
     calculates closure phases using multiple pixel triangles
     for each triangle of baselines
     """
     ccs = make_cpcoords(cdir)
     gcs = find_tris_multi(ccs,cdir)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'a')
     imcount=0
     bs_all = []
     for i in tqdm(ims):
         FT = fft_image(i,nx,ny)
         bs = []
+        tmp2 = []
         for ind in range(len(gcs)):
             gc = gcs[ind]
             if display==True:
@@ -217,13 +239,16 @@ def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True): #Master funct
                     else: tomult*=FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
                 tomean.append(tomult)
             bis_tmp = np.mean(tomean)
+            if save_allpix: 
+                fout['int'+str(imcount)+'/tri'+str(ind)] = tomean ###all pixel triangles for one triangle of baselines
             bs.append(bis_tmp)
-        bs_all.append(bs)
+        bs_all.append(bs)        
         imcount+=1
     cas = np.angle(bs_all,deg=1)
     Aas = np.abs(bs_all)
     Tas = np.abs(np.mean(bs_all,axis=0))
     cps = np.angle(np.mean(bs_all,axis=0),deg=1)
+    if save_allpix: fout.close()
     if len(ims)>1: cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
     else: cov,var,stdE = None,None,None
     return np.array([bs_all,cps,Tas,cov,var,stdE])
@@ -327,6 +352,45 @@ def calc_v2s(ims,mdir,nx=256,ny=256,display=False):
             plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
         plt.show()
     v2sc = np.array(v2s) - np.array(vbs)
+    v2m = np.mean(v2sc,axis=0)
+    if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
+    else: cov,var,stdE = None,None,None
+    return np.array([v2m, cov, var, stdE, v2sc, amps, vun, vbs])
+
+def calc_v2s_single(ims,mdir,nx=256,ny=256,display=False):
+    """
+    calculates squared visibilities for a stack of images
+    """
+    bcs = find_v2_pix(mdir,v2type='single')
+    bcs = np.array(bcs)
+    m=mask_sig_pspec(mdir,nx,ny)
+    v2s = []
+    v2sn = []
+    amps = []
+    vun = []
+    vbs = []
+    pall = np.zeros([ny,nx])
+    for i in tqdm(ims):
+        psp = make_pspec(i,nx,ny)
+        pall+=psp
+        tmp = np.array([np.sum([psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))])
+                        for x in range(len(bcs))])
+        v2s.append(tmp/psp[int(len(psp)/2),int(len(psp)/2)])
+        vun.append(tmp)
+        amps.append(psp[int(len(psp)/2),int(len(psp)/2)])
+        bcs = np.array(bcs)
+        vbs.append(np.array([
+            calc_vis_bias(psp,m,bcs[x])/psp[int(len(psp)/2),int(len(psp)/2)]
+            for x in range(len(bcs))]))
+    if display==True:
+        fff = plt.figure(figsize=(18,9))
+        plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
+        plt.title(mdir)
+        plt.imshow(pall**0.1,origin='lower')
+        for x in range(len(bcs)):
+            plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
+        plt.show()
+    v2sc = np.array(v2s)# - np.array(vbs)
     v2m = np.mean(v2sc,axis=0)
     if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
     else: cov,var,stdE = None,None,None

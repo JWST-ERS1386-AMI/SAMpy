@@ -22,7 +22,7 @@ def rot_bl_uvs(PAs,cdir):
     return np.array(uvs)
 
 
-def build_oi(targ,lam,cps,cerrs,v2s,verrs,PAs,cdir,fn):
+def build_oi(targ,lam,cdir,fn,cps,cerrs,v2s,verrs,PAs):
     oi_arr = oifits()
     oi_arr.wavelength['ARRAY'] = OI_WAVELENGTH(lam*1.0e-06)
     oi_arr.target = np.append(oi_arr.target,OI_TARGET(targ,0,0))

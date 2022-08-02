@@ -20,7 +20,7 @@ git clone https://github.com/JWST-ERS1386-AMI/SAMpy
 Then use conda to create an environment for SAMpy using the SAMpy.yml file:
 
 ```
-conda env create --file SAMpy
+conda env create --file SAMpy.yml
 ```
 
 Activate the SAMpy environment, and open jupyter notebook:

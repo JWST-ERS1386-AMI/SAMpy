@@ -94,7 +94,7 @@ def binary_chi2(cpdata,cperrs,cpuvs,v2data,v2errs,v2uvs,rotlist,pars,lam,inc_v2s
 
 
 
-def gen_chi2_grid(cpdata,cperrs,cpuvs,v2data,v2errs,v2uvs,rotlist,lam,
+def gen_chi2_grid(cpdata,cperrs,cpuvs,v2data,v2errs,v2uvs,rotlist,lam,maxsep=1.5,maxcont=9.5,
                   verbose=False,inc_v2s=True,
                   npas=11,nseps=51,ndms=51):
     pas = np.linspace(0.0,360.0,npas)

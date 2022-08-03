@@ -98,8 +98,8 @@ def gen_chi2_grid(cpdata,cperrs,cpuvs,v2data,v2errs,v2uvs,rotlist,lam,maxsep=1.5
                   verbose=False,inc_v2s=True,
                   npas=11,nseps=51,ndms=51):
     pas = np.linspace(0.0,360.0,npas)
-    seps = np.linspace(0.0,0.5,nseps)
-    dms = np.linspace(0.0,10.0,ndms)
+    seps = np.linspace(0.0,maxsep,nseps)
+    dms = np.linspace(0.0,maxcont,ndms)
 
     g2 = [[[[] for sep in seps] for dm in dms] for pa in pas]
     coords2 = [[[[] for sep in seps] for dm in dms] for pa in pas]

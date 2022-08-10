@@ -89,7 +89,7 @@ def lnprior(modpars):
         if 180.0 <= pa: return -np.inf
     for s in ss:
         if s < 0.0: return -np.inf
-        if s > 1.2: return -np.inf
+        if s > 0.5: return -np.inf
     for dm in dms:
         if dm < 0.0: return -np.inf
         if dm > 10.0: return -np.inf
@@ -112,7 +112,7 @@ def run_PT_emcee(v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,lam,
                  inc_v2s=False,ndim=3,nwalkers=100,ntemps=10,NTHREADS=1,writeint=100,
                  odir='./',NITS=1000,verbose=False,overwrite=True,suff=''):
     start = [-180.0,0,0]
-    scales = [350.0,1.2,10.0]
+    scales = [350.0,0.5,10.0]
     p0 = [[np.array(start)+np.array(scales)*np.random.uniform(low=0.0,high=1.0,size=len(scales)) for i in range(nwalkers)] for j in range(ntemps)]
 
     p0 = np.array(p0)

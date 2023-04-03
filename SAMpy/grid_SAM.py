@@ -12,10 +12,11 @@ from scipy.interpolate import griddata
 
 
 from ipywidgets import IntProgress
-from IPython.display import display
+from IPython.display import display as idisplay
 import time
 
 def binary_mod(lam,cpuvs,v2uvs,modpars,ang,dokp=False,inc_v2s=True):
+    ######make this faster like binary_cps_pix below!!!!
     cpuvs2 = cpuvs/(lam*1.0e-06)/206265*2.0*np.pi
     cpuvs2[:,:,1]*=-1.0
 
@@ -68,6 +69,38 @@ def binary_mod(lam,cpuvs,v2uvs,modpars,ang,dokp=False,inc_v2s=True):
     else: 
         return np.array(cplist)
 
+    
+def binary_cps_pix(lam,cpuvs2,modpars,ang,dokp=False):
+    
+    #cpuvs2 = cpuvs/(lam*1.0e-06)/206265*2.0*np.pi
+    #cpuvs2[:,:,1]*=-1.0
+
+    npars = len(modpars)
+    ncs = int(npars/3)
+    pas = np.array([modpars[int(i*3)] for i in range(ncs)])
+    ss = np.array([modpars[int(i*3+1)] for i in range(ncs)])
+    dms = np.array([modpars[int(i*3+2)] for i in range(ncs)])
+    pas_d = np.round(90-ang+pas,3)
+    bs = 10**(dms/-2.5)
+    for i in range(len(pas_d)):
+        while pas_d[i] < -180.0: pas_d[i] += 360
+        while pas_d[i] > 180.0: pas_d[i] -= 360
+    pas_r = np.radians(pas_d)
+    xs = ss*np.cos(pas_r)
+    ys = ss*np.sin(pas_r)
+    
+    cplist = []
+    for tri in cpuvs2:
+        us = tri[:,:,0]
+        vs = tri[:,:,1]
+        uxvys = np.array([us*xs[ii]+vs*ys[ii] for ii in range(len(xs))])
+        FT = np.sum(1.0+np.array([bs[ii]*(np.cos(uxvys[ii])+1.0j*np.sin(uxvys[ii])) for ii in range(len(bs))]),axis=0)
+        cp = np.angle(np.prod(FT,axis=-1),deg=1)
+        cplist.append(cp)       
+    return np.array(cplist)
+    
+    
+    
 
 def binary_chi2(cpdata,cperrs,cpuvs,v2data,v2errs,v2uvs,rotlist,pars,lam,inc_v2s=True):
     chi = []
@@ -123,48 +156,60 @@ def gen_chi2_grid(cpdata,cperrs,cpuvs,v2data,v2errs,v2uvs,rotlist,lam,
     return np.array(g2),np.array(coords2)
 
 
-def make_cc(g,coords,cpdata,v2data,inc_v2s=True):
+def make_cc(g,coords,cpdata,v2data,inc_v2s=True,filename=None):
     if inc_v2s==True:
         dof = len(cpdata.flatten())+len(v2data.flatten())-3.0
     else:
         dof = len(cpdata.flatten())-3.0
-    g = g/np.min(g)*dof
-    g = g-g[0,0,0]
     g2 = np.mean(g,axis=0)
+    g2 = g2/np.min(g2)*dof
+    g2 = g2-g2[0,0]
     seps = np.unique(coords[:,:,:,-1])
     dms = np.unique(coords[:,:,:,-2])
-
+    print(seps)
+    print(dms)
     X,Y= np.meshgrid(seps,dms)
-    f = plt.figure(figsize=(6,4))
-    plt.title('Simulated ERS 1386 Contrast Curve')
+    f = plt.figure(figsize=(10,7))
+    plt.subplots_adjust(bottom=0.15)
+    #plt.title('AB Dor Contrast')
     #ax = f.add_subplot(111)
-    CS=plt.contour(X,Y,g2,levels=[np.min(g),1.0,4.0,9.0,16.0,25.0],alpha = 0.8)
-    CF=plt.contourf(X,Y,g2,levels=[np.min(g),1.0,4.0,9.0,16.0,25.0],alpha = 0.8)
+    CS=plt.contour(X,Y,g2,levels=[np.min(g2),1.0,4.0,9.0,16.0,25.0],colors='k')
+    CF=plt.contourf(X,Y,g2,levels=[np.min(g2),1.0,4.0,9.0,16.0,25.0],alpha = 0.8)
+    f.patch.set_facecolor('white')
     dat0= CS.allsegs
-    plt.ylim(10,2)
     #plt.xlim(0.01,0.25)
     #slist = [3,5]
-    #for s in slist:
+    #for s in [5]:
     #    dats = dat0[s-1][0]
     #    print dats.shape
     #    np.savetxt(odir+'cc_s'+str(s)+'.txt',np.array(dats))
     #cc3o = np.loadtxt(odir+'cc_s3.txt')
     #cc5o = np.loadtxt(odir+'cc_s5.txt')
     #plt.plot(cc3o[:,0],cc3o[:,1],'k--')
-    #plt.plot(cc5o[:,0],cc5o[:,1],'k--')
+    #plt.plot(dats[:,0],dats[:,1],'k')
+    plt.ylim(11,2)
+    plt.grid(which='major')
+    #plt.title('AB Dor Cal Contrast Curve')
     plt.xlabel('Separation (arcsec)',fontsize=14)
     plt.ylabel('Contrast (mag)',fontsize=14)
     cbar=plt.colorbar(CF)
-    cbar.ax.yaxis.set_ticklabels(['',r'$1 \sigma$',r'$2 \sigma$',r'$3 \sigma$',r'$4 \sigma$',r'$5 \sigma$'])
-    plt.savefig('example_hip65426_cc.pdf',dpi=300)
+    cbar.ax.yaxis.set_ticklabels(['',r'$1 \sigma$',r'$2 \sigma$',r'$3 \sigma$',r'$4 \sigma$',r'$5 \sigma$'],fontsize=12)
+    if filename!=None:
+        plt.savefig(filename)
+    #plt.savefig('example_hip65426_cc.pdf',dpi=300)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
     return f,dat0
 
-def proc_binary_grid(grid,coords,cps,v2s):
+def proc_binary_grid(grid,coords,cps,v2s,filename=None,rescale=True,inc_v2s=True):
     bfit = coords[np.where(grid==np.min(grid))][0]
     bmod = [bfit[0],bfit[2],bfit[1]]
     dof = len(cps.flatten())+len(v2s.flatten()) - 3.0
+    if inc_v2s==False: 
+        dof = len(cps.flatten())
     bdm = np.where(grid==np.min(grid))[1][0]
-    grid_r = grid*dof/np.min(grid)
+    if rescale==True: grid_r = grid*dof/np.min(grid)
+    else: grid_r = grid
     gridslice = grid_r[:,bdm,:]
     coordsslice = coords[:,bdm,:]
     PAs_g = coordsslice[:,:,0]
@@ -176,8 +221,18 @@ def proc_binary_grid(grid,coords,cps,v2s):
     xs = np.linspace(-np.max(seps_g),np.max(seps_g),100)
     X,Y = np.meshgrid(xs,xs)
     gint = griddata(points,vals,(X,Y))
-    plt.pcolormesh(X,Y,gint,cmap=plt.get_cmap('cubehelix'))
-    plt.colorbar()
+    f = plt.figure(figsize=(6,5))
+    f.add_subplot(111)
+    pcm=plt.pcolormesh(X,Y,gint/np.nanmin(gint)*32,rasterized=True,cmap=plt.get_cmap('cubehelix'))
+    plt.colorbar(pcm)
+    plt.scatter(-np.sin(np.radians(bmod[0]))*bmod[1],np.cos(np.radians(bmod[0]))*bmod[1],marker='x',color='w',s=100)
+    #plt.contour(X,Y,gint/np.min(gint)*32,levels=[gint/np.min(gint)*32+3.53],colors='w')
+    plt.xticks([-0.4,-0.2,0.0,0.2,0.4],['0.4','0.2','0.0','-0.2','-0.4'])
+    plt.title('r$\chi^2$ Surface: Contrast = '+str(bmod[-1])+' mag')
+    plt.xlabel(r'$\Delta$RA (arcsec)')
+    plt.ylabel(r'$\Delta$DEC (arcsec)')
+    if filename!=None:
+        plt.savefig(filename)
     plt.show()
-    return bmod,np.min(grid)
+    return bmod,np.min(grid_r)
     

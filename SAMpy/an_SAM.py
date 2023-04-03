@@ -12,7 +12,8 @@ from matplotlib import pyplot as plt
 from scipy import interpolate
 import pdb
 import copy
-#import h5py
+import h5py
+from .utils import *
 
 
 
@@ -116,7 +117,64 @@ def find_cvis_pix(mdir,cvistype='multi'):
             bclist.append(ps)
     return bclist
 
-def find_tris_multi(ccs,cdir,ny=256,nx=256,meters=False,pscam=0.065,lamc=3.8): #Function 2 definition
+def find_tris_multi_2(ccs,cdir,ny=256,nx=256,meters=False,uv=False,pscam=0.065,lamc=3.8,redo_calc=False): #Function 2 definition
+    """
+    calculates sampling coordinates for "Monnier"
+    closure phase calculation method
+
+    -the first time this runs it finds all triangles of pixels
+    that connect the three splodges for a single closing triangle
+    and that also satisfy u1,v1+u2,v2+u3,v3 = 0,0 and saves the
+    output to the mask directory
+    -as-is, if you want to adjust your mask, you need to manually
+    delete the "cpsamp" files from the mask directory, sorry.
+    """
+    ccall = []
+    freqs = np.fft.fftshift(np.fft.fftfreq(nx))
+    for x in range(len(ccs)):
+        c = ccs[x]
+        ifile = cdir+'cpsamp_ind_'+str(x)+'.fits'
+        if (os.path.isfile(ifile)==False) or (redo_calc==True): #Executed during first run
+            print ('\n Calculating triangle: '+str(x+1)+' of '+str(len(ccs)))
+            ib = cdir+'ind'+str(x)+'_vert'
+            p0 = pyfits.getdata(ib+'0.fits')
+            p1 = pyfits.getdata(ib+'1.fits')
+            p2 = pyfits.getdata(ib+'2.fits')
+            g = []
+            for pp1 in tqdm(p0):
+                if pp1[1] not in [8,16,24,40,56,72]:
+                    for pp2 in p1:
+                        if pp2[1] not in [8,16,24,40,56,72]:
+                    #cy=ny//2
+                    #cx=nx//2
+                            for pp3 in p2:
+                                if pp3[1] not in [8,16,24,40,56,72]:
+                                    sumx = freqs[pp1[0]]+freqs[pp2[0]]+freqs[pp3[0]]
+                                    sumy = freqs[pp1[1]]+freqs[pp2[1]]+freqs[pp3[1]]
+                                    if sumx==0:
+                                        if sumy==0:
+                                            g.append(np.array([pp1,pp2,pp3],dtype='int'))
+            print(len(g))
+            print('---------------')
+            g = np.array(g)
+            pyfits.writeto(ifile,g,overwrite=True)
+        else: g = pyfits.getdata(ifile)
+        ccall.append(g)
+    if meters: 
+        ###returns u,v that go with pixel sampling measured in m
+        ###need to flip us to get to true u,v coords
+        ccall2 = np.array(copy.deepcopy(ccall))
+        psc = 1.0/(float(nx)*pscam)*206265.0*lamc*1e-06
+        ccall2 = ccall2 - int(ny/2)
+        ccall2 = ccall2*psc
+        if uv: ###flipping u to get to real u,v
+            for i in range(len(ccall2)):
+                ccall2[i][:,:,0] = -ccall2[i][:,:,0]
+        return ccall2
+    return np.array(ccall)
+
+
+def find_tris_multi(ccs,cdir,ny=256,nx=256,meters=False,uv=False,pscam=0.065,lamc=3.8,redo_calc=False): #Function 2 definition
     """
     calculates sampling coordinates for "Monnier"
     closure phase calculation method
@@ -132,7 +190,7 @@ def find_tris_multi(ccs,cdir,ny=256,nx=256,meters=False,pscam=0.065,lamc=3.8): #
     for x in range(len(ccs)):
         c = ccs[x]
         ifile = cdir+'cpsamp_ind_'+str(x)+'.fits'
-        if os.path.isfile(ifile)==False: #Executed during first run
+        if (os.path.isfile(ifile)==False) or (redo_calc==True): #Executed during first run
             print ('\n Calculating triangle: '+str(x+1)+' of '+str(len(ccs)))
             ib = cdir+'ind'+str(x)+'_vert'
             p0 = pyfits.getdata(ib+'0.fits')
@@ -141,26 +199,33 @@ def find_tris_multi(ccs,cdir,ny=256,nx=256,meters=False,pscam=0.065,lamc=3.8): #
             g = []
             for pp1 in tqdm(p0):
                 for pp2 in p1:
-                    dpp1 = pp1 - np.array([int(ny/2),int(nx/2)])
-                    dpp2 = pp2 - np.array([int(ny/2),int(nx/2)])
+                    cy=ny//2
+                    cx=nx//2
+                    dpp1 = pp1 - np.array([cy,cx])
+                    dpp2 = pp2 - np.array([cy,cx])
                     dpp3 = -dpp1-dpp2
-                    pp3 = dpp3 + np.array([int(ny/2),int(nx/2)])
+                    pp3 = dpp3 + np.array([cy,cx])      
                     t1 = np.where(p2[:,0]==pp3[0])
                     t2 = np.where(p2[:,1]==pp3[1])
                     inlist = False
                     for t in t1[0]:
                         if t in t2[0]: inlist=True
                     if inlist==True:
-                        g.append([pp1,pp2,pp3])
+                        g.append(np.array([pp1,pp2,pp3],dtype='int'))
             g = np.array(g)
-            pyfits.writeto(ifile,g)
+            pyfits.writeto(ifile,g,overwrite=True)
         else: g = pyfits.getdata(ifile)
         ccall.append(g)
     if meters: 
+        ###returns u,v that go with pixel sampling measured in m
+        ###need to flip us to get to true u,v coords
         ccall2 = np.array(copy.deepcopy(ccall))
         psc = 1.0/(float(nx)*pscam)*206265.0*lamc*1e-06
         ccall2 = ccall2 - int(ny/2)
         ccall2 = ccall2*psc
+        if uv: ###flipping u to get to real u,v
+            for i in range(len(ccall2)):
+                ccall2[i][:,:,0] = -ccall2[i][:,:,0]
         return ccall2
     return np.array(ccall)
 
@@ -183,6 +248,29 @@ def make_cplens(mdir):
     cplens = np.sqrt(cpuvs[:,:,0]**2+cpuvs[:,:,1]**2)
     return cplens
 
+def calc_cps_single_DFT(ims,mdir,nx=256,ny=256,display=False,useW=True):
+    """
+    calculate closure phases using single pixels at the center of each splodge
+    """
+    
+    cpDFTmat_Re,cpDFTmat_Im = pyfits.getdata(mdir+'cpDFTmat_sing_'+str(nx)+'.fits')
+    IM2CT = cpDFTmat_Re + cpDFTmat_Im*1.0j
+    bs_all = []
+    imcount=0
+    for i in tqdm(ims):
+        ctphis = np.dot(IM2CT,i.flatten()) / np.sum(i.flatten())
+        bispecs = []
+        for j in range(len(ctphis)//3):
+            bispec = np.prod([ctphis[j*3+x] for x in range(3)])
+            bispecs.append(bispec)
+        bs_all.append(bispecs)
+        imcount+=1
+    cas = np.angle(bs_all,deg=1)
+    Aas = np.abs(bs_all)
+    cps = np.angle(np.nanmean(bs_all,axis=0),deg=1)
+    cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW)
+    return bs_all, cps, cov, var, stdE
+
 def calc_cps_single(ims,mdir,nx=256,ny=256,display=False,useW=True):
     """
     calculate closure phases using single pixels at the center of each splodge
@@ -198,49 +286,169 @@ def calc_cps_single(ims,mdir,nx=256,ny=256,display=False,useW=True):
             if imcount==0:
                 plt.imshow(np.abs(FT)**0.1)
                 plt.scatter(ccs[:,:,0],ccs[:,:,1],edgecolors='k',facecolors='None')
+                rinds=np.random.choice(len(ccs),5)
+                for ii in rinds:
+                    plt.plot([ccs[ii,jj,0] for jj in [0,1,2,0]],[ccs[ii,jj,1] for jj in [0,1,2,0]],c='w')
                 plt.show()
         imcount+=1
     cas = np.angle(bs_all,deg=1)
     Aas = np.abs(bs_all)
-    cps = np.angle(np.mean(bs_all,axis=0),deg=1)
+    cps = np.angle(np.nanmean(bs_all,axis=0),deg=1)
     cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW)
     return bs_all, cps, cov, var, stdE
 
-def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filename=''): #Master function
+
+def calc_cps_multi_image(image,gcs,imcount,nx=256,ny=256,display=False,save=False,fout=None):
+    FT = fft_image(image,nx,ny)
+    bs = []
+    for ind in range(len(gcs)):
+        gc = gcs[ind]
+        if display==True:
+            f=plt.figure(figsize=(5,5))
+            ax = f.add_subplot(111)
+            plt.imshow(np.abs(FT)**0.1)
+            tp = np.mean(gc,axis=0)
+            plt.scatter(gc[:,:,0],gc[:,:,1],edgecolors='k',facecolors='None')
+            rinds=np.random.choice(len(gc),5)
+            for ii in rinds:
+                plt.plot([gc[ii,jj,0] for jj in [0,1,2,0]],[gc[ii,jj,1] for jj in [0,1,2,0]],c='w')
+            ax.set_yticks([])
+            ax.set_xticks([])
+            #plt.ylim(20,237)
+            #plt.xlim(20,237)
+            #plt.savefig('/Users/stephsallum/Dropbox/Talks/220719_SPIE/cp_sampling.pdf')
+            plt.show()
+                #stop
+        tomean = []
+        for p in range(len(gc)):
+            for j in range(3):
+                if j==0:
+                    tomult = FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
+                else: tomult*=FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
+            tomean.append(tomult)
+        bis_tmp = np.mean(tomean)
+        if save: 
+            fout['int'+str(imcount)+'/tri'+str(ind)] = tomean ###all pixel triangles for one triangle
+        bs.append(bis_tmp)
+    return np.array(bs)
+
+def calc_cps_multi_groupimage(image,gcs,imcount,groupcount,nx=256,ny=256,display=False,save=False,fout=None):
+    FT = fft_image(image,nx,ny)
+    bs = []
+    for ind in range(len(gcs)):
+        gc = gcs[ind]
+        if display==True:
+            f=plt.figure(figsize=(5,5))
+            ax = f.add_subplot(111)
+            plt.imshow(np.abs(FT)**0.1)
+            tp = np.mean(gc,axis=0)
+            plt.scatter(gc[:,:,0],gc[:,:,1],edgecolors='k',facecolors='None')
+            rinds=np.random.choice(len(gc),5)
+            for ii in rinds:
+                plt.plot([gc[ii,jj,0] for jj in [0,1,2,0]],[gc[ii,jj,1] for jj in [0,1,2,0]],c='w')
+            ax.set_yticks([])
+            ax.set_xticks([])
+            #plt.ylim(20,237)
+            #plt.xlim(20,237)
+            #plt.savefig('/Users/stephsallum/Dropbox/Talks/220719_SPIE/cp_sampling.pdf')
+            plt.show()
+                #stop
+        tomean = []
+        for p in range(len(gc)):
+            for j in range(3):
+                if j==0:
+                    tomult = FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
+                else: tomult*=FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
+            tomean.append(tomult)
+        bis_tmp = np.mean(tomean)
+        if save: 
+            fout['int'+str(imcount)+'/group'+str(groupcount)+'/tri'+str(ind)] = tomean ###all pixel triangles for one triangle
+        bs.append(bis_tmp)
+    return np.array(bs)
+
+def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filename='',redo_calc=False): #Master function
     """
     calculates closure phases using multiple pixel triangles
     for each triangle of baselines
     """
     ccs = make_cpcoords(cdir)
-    gcs = find_tris_multi(ccs,cdir)
+    gcs = find_tris_multi(ccs,cdir,redo_calc=redo_calc,nx=nx,ny=ny)
+    #gcs = find_tris_multi_2(ccs,cdir,redo_calc=redo_calc,nx=nx,ny=ny)
     if save_allpix:
-        fout = h5py.File(filename+'.hdf5', 'a')
+        fout = h5py.File(filename+'.hdf5', 'w')
+    else:
+        fout = None
+    bs_all = []
+    for xx,i in tqdm(enumerate(ims)):        
+        bs = calc_cps_multi_image(i,gcs,xx,nx=nx,ny=ny,display=display,save=save_allpix,fout=fout)
+        display=False
+        bs_all.append(bs)
+    cas = np.angle(bs_all,deg=1)
+    Aas = np.abs(bs_all)
+    Tas = np.abs(np.mean(bs_all,axis=0))
+    cps = np.angle(np.mean(bs_all,axis=0),deg=1)
+    if save_allpix: fout.close()
+    if len(ims)>1: cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
+    else: cov,var,stdE = None,None,None
+    return np.array([bs_all,cps,Tas,cov,var,stdE])
+
+
+def calc_cps_multi_groups(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filename='',redo_calc=False): #Master function
+    """
+    calculates closure phases using multiple pixel triangles
+    for each triangle of baselines
+    """
+    ccs = make_cpcoords(cdir)
+    gcs = find_tris_multi(ccs,cdir,redo_calc=redo_calc,nx=nx,ny=ny)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'w')
+    else:
+        fout = None
+    bs_all = []
+    imcount=0
+    for cube in tqdm(ims):  
+        groupcount=0
+        tmp = []
+        for im in cube:
+            bs = calc_cps_multi_groupimage(im,gcs,imcount,groupcount,
+                                           nx=nx,ny=ny,display=display,
+                                           save=save_allpix,fout=fout)
+            display=False
+            tmp.append(bs)
+            groupcount+=1
+        imcount+=1
+        bs_all.append(tmp)
+    if save_allpix: fout.close()
+    return np.array(bs_all,dtype='complex')
+
+def calc_cps_multi_DFT(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filename='',redo_calc=False): #Master function
+    """
+    calculates closure phases using multiple pixel triangles
+    for each triangle of baselines
+    """
+
+    dmats = []
+    for i in range(35): ###remove hardcoding later!!!!!
+        cpDFTmat_Re,cpDFTmat_Im = pyfits.getdata(cdir+'cpDFTmat_multi_'+str(nx)+'_'+str(i)+'.fits')
+        IM2CT = cpDFTmat_Re + cpDFTmat_Im*1.0j
+        dmats.append(IM2CT)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'w')
     imcount=0
     bs_all = []
     for i in tqdm(ims):
         FT = fft_image(i,nx,ny)
         bs = []
         tmp2 = []
-        for ind in range(len(gcs)):
-            gc = gcs[ind]
-            if display==True:
-                if imcount==0:
-                    f=plt.figure(figsize=(10,10))
-                    plt.imshow(np.abs(FT)**0.1,cmap='viridis')#,vmin=0, vmax=0.4
-                    plt.imshow(np.abs(FT)**0.1)
-                    tp = np.mean(gc,axis=0)
-                    plt.scatter(gc[:,:,0],gc[:,:,1],edgecolors='k',facecolors='None')
-                    plt.show()
-            tomean = []
-            for p in range(len(gc)):
-                for j in range(3):
-                    if j==0:
-                        tomult = FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
-                    else: tomult*=FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
-                tomean.append(tomult)
-            bis_tmp = np.mean(tomean)
+        for ind in range(len(dmats)):
+            ctphis = np.dot(dmats[ind],i.flatten())
+            bispecs = []
+            for j in range(len(ctphis)//3):
+                bispec = np.prod([ctphis[j*3+x] for x in range(3)])
+                bispecs.append(bispec)      
+            bis_tmp = np.mean(bispecs)
             if save_allpix: 
-                fout['int'+str(imcount)+'/tri'+str(ind)] = tomean ###all pixel triangles for one triangle of baselines
+                fout['int'+str(imcount)+'/tri'+str(ind)] = bispecs ###all pixel triangles for one triangle of baselines
             bs.append(bis_tmp)
         bs_all.append(bs)        
         imcount+=1
@@ -318,13 +526,16 @@ def make_blens(mdir):
     blens = np.sqrt(buvs[:,0]**2+buvs[:,1]**2)
     return blens
 
-def calc_v2s(ims,mdir,nx=256,ny=256,display=False):
+def calc_v2s(ims,mdir,nx=256,ny=256,display=False,save_allpix=True,filename=None):
     """
     calculates squared visibilities for a stack of images
     """
     bcs = find_v2_pix(mdir)
     bcs = np.array(bcs)
     m=mask_sig_pspec(mdir,nx,ny)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'w')
+    imcount=0
     v2s = []
     v2sn = []
     amps = []
@@ -336,25 +547,116 @@ def calc_v2s(ims,mdir,nx=256,ny=256,display=False):
         pall+=psp
         tmp = np.array([np.sum([psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))])
                         for x in range(len(bcs))])
-        v2s.append(tmp/psp[int(len(psp)/2),int(len(psp)/2)])
+        tmpall = np.array([[psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))]
+                        for x in range(len(bcs))])
+        v2s.append(tmp/psp[ny//2,nx//2])
         vun.append(tmp)
-        amps.append(psp[int(len(psp)/2),int(len(psp)/2)])
+        amps.append(psp[ny//2,nx//2])
         bcs = np.array(bcs)
         vbs.append(np.array([
-            calc_vis_bias(psp,m,bcs[x])/psp[int(len(psp)/2),int(len(psp)/2)]
+            calc_vis_bias(psp,m,bcs[x])/psp[ny//2,nx//2]
             for x in range(len(bcs))]))
-    if display==True:
-        fff = plt.figure(figsize=(18,9))
-        plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
-        plt.title(mdir)
-        plt.imshow(pall**0.1,origin='lower')
-        for x in range(len(bcs)):
-            plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
-        plt.show()
+        if save_allpix==True:
+            for bb in range(len(tmpall)):
+                fout['int'+str(imcount)+'/v2s'+str(bb)] = tmpall[bb] ###all pixels for one baseline
+            fout['int'+str(imcount)+'/bias']=vbs[-1] ####bias values to subtract for each baseline
+            fout['int'+str(imcount)+'/zsp'] = psp[ny//2,nx//2]
+        imcount+=1
+        if display==True and imcount==1:
+            fff = plt.figure(figsize=(5,5))
+            #plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
+            #plt.title(mdir)
+            ax = fff.add_subplot(111)
+            plt.imshow(pall**0.1,origin='lower')
+            #for x in range(len(bcs)):
+            for x in [0]:
+                plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
+            ax.set_yticks([])
+            ax.set_xticks([])
+            #plt.xlim(20,237)
+            #plt.ylim(20,237)
+            #plt.savefig('/Users/stephsallum/Dropbox/Talks/220719_SPIE/v2_sampling.pdf')
+            plt.show()
+        #stop
+        
     v2sc = np.array(v2s) - np.array(vbs)
     v2m = np.mean(v2sc,axis=0)
     if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
     else: cov,var,stdE = None,None,None
+    if save_allpix: fout.close()
+    return np.array([v2m, cov, var, stdE, v2sc, amps, vun, vbs])
+
+def calc_v2s_groups(ims,mdir,nx=256,ny=256,display=False,save_allpix=True,filename=None):
+    """
+    calculates squared visibilities for a stack of images
+    """
+    bcs = find_v2_pix(mdir)
+    bcs = np.array(bcs)
+    m=mask_sig_pspec(mdir,nx,ny)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'w')
+    imcount=0
+    v2s = []
+    v2sn = []
+    amps = []
+    vun = []
+    vbs = []
+    pall = np.zeros([ny,nx])
+    for cube in tqdm(ims):
+        groupcount=0
+        v2stmp = []
+        v2sntmp = []
+        ampstmp = []
+        vuntmp = []
+        vbstmp = []
+        for i in cube:
+            psp = make_pspec(i,nx,ny)
+            pall+=psp
+            tmp = np.array([np.sum([psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))])
+                            for x in range(len(bcs))])
+            tmpall = np.array([[psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))]
+                            for x in range(len(bcs))])
+            v2stmp.append(tmp/psp[ny//2,nx//2])
+            vuntmp.append(tmp)
+            ampstmp.append(psp[ny//2,nx//2])
+            bcs = np.array(bcs)
+            vbstmp.append(np.array([
+                calc_vis_bias(psp,m,bcs[x])/psp[ny//2,nx//2]
+                for x in range(len(bcs))]))
+            if save_allpix==True:
+                for bb in range(len(tmpall)):
+                    fout['int'+str(imcount)+'/group'+str(groupcount)+'/v2s'+str(bb)] = tmpall[bb] ###all pixels for one baseline
+                fout['int'+str(imcount)+'/group'+str(groupcount)+'/bias']=vbstmp[-1] ####bias values to subtract for each baseline
+                fout['int'+str(imcount)+'/group'+str(groupcount)+'/zsp'] = psp[ny//2,nx//2]
+            groupcount+=1
+        imcount+=1
+        v2s.append(v2stmp)
+        v2sn.append(v2sntmp)
+        amps.append(ampstmp)
+        vun.append(vuntmp)
+        vbs.append(vbstmp)
+        if display==True and imcount==1:
+            fff = plt.figure(figsize=(5,5))
+            #plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
+            #plt.title(mdir)
+            ax = fff.add_subplot(111)
+            plt.imshow(pall**0.1,origin='lower')
+            #for x in range(len(bcs)):
+            for x in [0]:
+                plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
+            ax.set_yticks([])
+            ax.set_xticks([])
+            #plt.xlim(20,237)
+            #plt.ylim(20,237)
+            #plt.savefig('/Users/stephsallum/Dropbox/Talks/220719_SPIE/v2_sampling.pdf')
+            plt.show()
+        #stop
+        
+    v2sc = np.array(v2s) - np.array(vbs)
+    v2m = np.mean(v2sc,axis=0)
+    if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
+    else: cov,var,stdE = None,None,None
+    if save_allpix: fout.close()
     return np.array([v2m, cov, var, stdE, v2sc, amps, vun, vbs])
 
 def calc_v2s_single(ims,mdir,nx=256,ny=256,display=False):
@@ -374,6 +676,8 @@ def calc_v2s_single(ims,mdir,nx=256,ny=256,display=False):
         psp = make_pspec(i,nx,ny)
         pall+=psp
         tmp = np.array([np.sum([psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))])
+                        for x in range(len(bcs))])
+        tmpall = np.array([[psp[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))]
                         for x in range(len(bcs))])
         v2s.append(tmp/psp[int(len(psp)/2),int(len(psp)/2)])
         vun.append(tmp)
@@ -396,20 +700,50 @@ def calc_v2s_single(ims,mdir,nx=256,ny=256,display=False):
     else: cov,var,stdE = None,None,None
     return np.array([v2m, cov, var, stdE, v2sc, amps, vun, vbs])
 
-def calc_cvis(ims,mdir,nx=256,ny=256,display=False):
+def calc_cvis(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filename='',
+              subpixel=False,write_FTs=False):
     """
     calculates visibility amplitudes and phases for a stack of images
     """
     bcs = find_cvis_pix(mdir)
     bcs = np.array(bcs)
     m=mask_sig_pspec(mdir,nx,ny)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'w')
     vcs = []
     vbs = []
     pall = np.zeros([ny,nx])
+    imcount=0
     for i in tqdm(ims):
-        FT = fft_image(i,nx,ny)
+        
+        if subpixel==False: FT = fft_image(i,nx,ny)
+        else: 
+            yint,xint = get_center(i,4.3,6.5,0.065)
+            x,y = find_psf_center(i,verbose=False)
+            dy,dx = y-yint,x-xint
+            FTo,FTn = fourier_center(i,dy,dx)
+            img = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(FTn))))
+            """
+            plt.imshow(i)
+            plt.colorbar()
+            plt.scatter(x,y,c='r')
+            plt.scatter(xint,yint,c='b')
+            plt.show()
+            plt.imshow(img)
+            plt.colorbar()
+            plt.show()
+            plt.imshow(i-img)
+            plt.colorbar()
+            plt.show()
+            stop
+            """
+            FT = fft_image(img,nx,ny)
+        
+        
         pall+=np.abs(FT)**2
         tmp = np.array([np.mean([FT[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))])
+                        for x in range(len(bcs))])
+        tmpall = np.array([[FT[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))]
                         for x in range(len(bcs))])
         vis = tmp/FT[ny//2,nx//2]
         vcs.append(vis)
@@ -417,6 +751,76 @@ def calc_cvis(ims,mdir,nx=256,ny=256,display=False):
         vbs.append(np.array([
             calc_vis_bias(np.abs(FT),m,bcs[x])/np.abs(FT)[ny//2,nx//2]
             for x in range(len(bcs))]))
+        if save_allpix==True:
+            for bb in range(len(tmpall)):
+                fout['int'+str(imcount)+'/cvis'+str(bb)] = tmpall[bb] ###all pixels for one baseline
+            fout['int'+str(imcount)+'/bias']=vbs[-1] ####bias values to subtract for each baseline
+            fout['int'+str(imcount)+'/zsp'] = FT[ny//2,nx//2]
+        if write_FTs==True:
+            fout['int'+str(imcount)+'/FT']=FT
+        imcount+=1
+        #if imcount==9:
+        #    FTt = FT
+    if display==True:
+        fff = plt.figure(figsize=(18,9))
+        plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
+        plt.title(mdir)
+        #plt.imshow(pall**0.1,origin='lower')
+        cpl = plt.imshow(np.angle(FT,deg=1),origin='lower')
+        plt.colorbar(cpl)
+        for x in range(len(bcs)):
+            plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
+        plt.show()
+    amps_c = np.abs(np.array(vcs))# - np.array(vbs)
+    amps_m = np.mean(amps_c,axis=0)
+    phis_m = np.angle(np.mean(vcs,axis=0),deg=1)
+    phis_all = np.angle(vcs,deg=1)
+    #if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
+    #else: cov,var,stdE = None,None,None
+    cov,var,stdE = None,None,None
+    if save_allpix: fout.close()
+    return np.array([amps_m, phis_m, cov, var, stdE, phis_all])
+
+def calc_cvis_groups(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filename='',subpixel=False):
+    """
+    calculates visibility amplitudes and phases for a stack of images
+    """
+    bcs = find_cvis_pix(mdir)
+    bcs = np.array(bcs)
+    m=mask_sig_pspec(mdir,nx,ny)
+    if save_allpix:
+        fout = h5py.File(filename+'.hdf5', 'w')
+    vcs = []
+    vbs = []
+    pall = np.zeros([ny,nx])
+    imcount=0
+    for cube in tqdm(ims):
+        vcstmp = []
+        vbstmp = []
+        groupcount=0
+        for i in cube:
+
+            FT = fft_image(i,nx,ny)
+            pall+=np.abs(FT)**2
+            tmp = np.array([np.mean([FT[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))])
+                            for x in range(len(bcs))])
+            tmpall = np.array([[FT[bcs[x][y][1],bcs[x][y][0]] for y in range(len(bcs[x]))]
+                            for x in range(len(bcs))])
+            vis = tmp/FT[ny//2,nx//2]
+            vcstmp.append(vis)
+            bcs = np.array(bcs)
+            vbstmp.append(np.array([
+                calc_vis_bias(np.abs(FT),m,bcs[x])/np.abs(FT)[ny//2,nx//2]
+                for x in range(len(bcs))]))
+            if save_allpix==True:
+                for bb in range(len(tmpall)):
+                    fout['int'+str(imcount)+'/group'+str(groupcount)+'/cvis'+str(bb)] = tmpall[bb] ###all pixels for one baseline
+                fout['int'+str(imcount)+'/group'+str(groupcount)+'/bias']=vbstmp[-1] ####bias values to subtract for each baseline
+                fout['int'+str(imcount)+'/group'+str(groupcount)+'/zsp'] = FT[ny//2,nx//2]
+            groupcount+=1
+        vcs.append(vcstmp)
+        vbs.append(vbstmp)
+        imcount+=1
     if display==True:
         fff = plt.figure(figsize=(18,9))
         plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
@@ -428,6 +832,9 @@ def calc_cvis(ims,mdir,nx=256,ny=256,display=False):
     amps_c = np.abs(np.array(vcs))# - np.array(vbs)
     amps_m = np.mean(amps_c,axis=0)
     phis_m = np.angle(np.mean(vcs,axis=0),deg=1)
-    if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
-    else: cov,var,stdE = None,None,None
-    return np.array([amps_m, phis_m, cov, var, stdE])
+    phis_all = np.angle(vcs,deg=1)
+    #if len(ims)>1: cov,var,stdE = gen_cov(v2m,v2sc,useW=False)
+    #else: cov,var,stdE = None,None,None
+    cov,var,stdE = None,None,None
+    if save_allpix: fout.close()
+    return np.array([amps_m, phis_m, cov, var, stdE, phis_all, vcs, vbs])

@@ -9,7 +9,7 @@ import astropy.io.fits as pyfits
 import numpy as np
 
 from ipywidgets import IntProgress
-from IPython.display import display
+from IPython.display import display as idisplay
 import time
 import matplotlib.pyplot as plt
 import corner
@@ -62,15 +62,53 @@ def binary_phase(lam,uvs,v2uvs,modpars,ang,inc_v2s=True):
         return np.array(mlist),np.array(blist)
     else: return np.array(mlist)
 
+def binary_cps_pix_avg(lam,cpuvs2,modpars,ang,dokp=False,avg=True):
+    
+    #cpuvs2 = cpuvs/(lam*1.0e-06)/206265*2.0*np.pi
+    #cpuvs2[:,:,1]*=-1.0
 
-def lnlike(pars,v2d,v2de,bl_uvs_2,cpd,cpde,cp_uvs_2,angs,inc_v2s,lam):
+    npars = len(modpars)
+    ncs = int(npars/3)
+    pas = np.array([modpars[int(i*3)] for i in range(ncs)])
+    ss = np.array([modpars[int(i*3+1)] for i in range(ncs)])
+    dms = np.array([modpars[int(i*3+2)] for i in range(ncs)])
+    pas_d = np.round(90-ang+pas,3)
+    bs = 10**(dms/-2.5)
+    for i in range(len(pas_d)):
+        while pas_d[i] < -180.0: pas_d[i] += 360
+        while pas_d[i] > 180.0: pas_d[i] -= 360
+    pas_r = np.radians(pas_d)
+    xs = ss*np.cos(pas_r)
+    ys = ss*np.sin(pas_r)
+    
+    cplist = []
+    for tri in cpuvs2:
+        us = tri[:,:,0]
+        vs = tri[:,:,1]
+        uxvys = np.array([us*xs[ii]+vs*ys[ii] for ii in range(len(xs))])
+        FT = np.sum(1.0+np.array([bs[ii]*(np.cos(uxvys[ii])+1.0j*np.sin(uxvys[ii])) for ii in range(len(bs))]),axis=0)
+        if avg==True: 
+            cp = np.angle(np.mean(np.prod(FT,axis=-1)),deg=1) ### returns angle that goes with average bispectrum
+        else:
+            cp = np.angle(np.prod(FT,axis=-1),deg=1) ####returns all pixels
+        cplist.append(cp)       
+    return np.array(cplist)    
+    
+    
+
+def lnlike(pars,v2d,v2de,bl_uvs_2,cpd,cpde,cp_uvs_2,angs,inc_v2s,lam,avgpix,allpix):
     cpalls,v2alls = [],[]
     for ang in angs:
         if inc_v2s==True:
             cptmp,v2tmp = binary_phase(lam,cp_uvs_2,bl_uvs_2,pars,ang,inc_v2s=inc_v2s)
             v2alls.append(v2tmp)
         else:
-            cptmp = binary_phase(lam,cp_uvs_2,bl_uvs_2,pars,ang,inc_v2s=inc_v2s)
+            if avgpix==True:
+                cptmp = binary_cps_pix_avg(lam,cp_uvs_2,pars,ang)
+            elif allpix==True:
+                    cptmp = binary_cps_pix_avg(lam,cp_uvs_2,pars,ang,avg=False)
+            else:
+                cptmp = binary_phase(lam,cp_uvs_2,bl_uvs_2,pars,ang,inc_v2s=inc_v2s)
         cpalls.append(cptmp)
     chic = np.sum((np.array(cpalls)-np.array(cpd))**2/np.array(cpde)**2)
     if inc_v2s==True: chiv = np.sum((np.array(v2alls)-np.array(v2d))**2/np.array(v2de)**2)
@@ -110,7 +148,8 @@ def lnprob(theta):
 
 def run_PT_emcee(v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,lam,
                  inc_v2s=False,ndim=3,nwalkers=100,ntemps=10,NTHREADS=1,writeint=100,
-                 odir='./',NITS=1000,verbose=False,overwrite=True,suff=''):
+                 odir='./',NITS=1000,verbose=False,overwrite=True,suff='',
+                 avgpix=False,allpix=False):
     start = [-180.0,0,0]
     scales = [350.0,0.5,10.0]
     p0 = [[np.array(start)+np.array(scales)*np.random.uniform(low=0.0,high=1.0,size=len(scales)) for i in range(nwalkers)] for j in range(ntemps)]
@@ -128,7 +167,7 @@ def run_PT_emcee(v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,lam,
             p0[j,i] = modpars
 
 
-    sampler = PTSampler(ntemps,nwalkers,ndim,lnlike,lnprior,loglargs=[v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,inc_v2s,lam],threads=NTHREADS)
+    sampler = PTSampler(ntemps,nwalkers,ndim,lnlike,lnprior,loglargs=[v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,inc_v2s,lam,avgpix,allpix],threads=NTHREADS)
 
 
     if overwrite==False:
@@ -144,6 +183,7 @@ def run_PT_emcee(v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,lam,
             lnllist = []
             count = 0
     else:
+        if os.path.isdir(odir)==False: os.makedirs(odir)
         plist = []
         lnplist = []
         lnllist = []
@@ -153,7 +193,7 @@ def run_PT_emcee(v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,lam,
     print('about to sample')
     print('runnning steps '+str(count)+' to '+str(NITS))
     f = IntProgress(min=count, max=NITS) # instantiate the bar
-    display(f) # display the bar
+    idisplay(f) # display the bar
     f.value=count
 
     for res in sampler.sample(p0, iterations=NITS-count, storechain=False):
@@ -181,7 +221,7 @@ def run_PT_emcee(v2data,v2errs,v2uvs,cpdata,cperrs,cpuvs,angs,lam,
 
 
 def plot_corner(chain,lnls,ntemps=10,nwalkers=100,burnin=100,title='',truths=[],
-                fname='',pnames='',smooth=False,figsize=(7,6)):
+                fname='',pnames='',smooth=False,figsize=(7,6),dof=np.nan):
     lnls2 = lnls.reshape([ntemps,nwalkers,len(lnls)])
     dim = len(chain[0,0,0])
     logl = 0
@@ -198,17 +238,19 @@ def plot_corner(chain,lnls,ntemps=10,nwalkers=100,burnin=100,title='',truths=[],
     #pnames = ['PA1','s1','dm1','PA2','s2','dm2','PA3','s3','dm3']
     fig = plt.figure(figsize=figsize)
     if len(truths)>0:
-        corner.corner(chain2,labels=pnames,fig=fig, max_n_ticks=4,truths=truths,fontsize=12,smooth=smooth)
+        corner.corner(chain2,labels=pnames,fig=fig, max_n_ticks=4,truths=truths,fontsize=10,smooth=smooth)
     else:
-        corner.corner(chain2,labels=pnames,fig=fig, max_n_ticks=4,fontsize=12,smooth=smooth)
-    plt.subplots_adjust(top=0.9)
-    fig.suptitle(title,fontsize=18)
+        corner.corner(chain2,labels=pnames,fig=fig, max_n_ticks=4,fontsize=10,smooth=smooth)
+    plt.subplots_adjust(top=0.925)
+    fig.suptitle(title,fontsize=12)
     if fname!='': plt.savefig(fname,dpi=300)
     plt.show()
     mpars = chain[np.where(lnls==np.max(lnls))][0]
     #print(mpars)
     #chain2[:,0]-=mpars[0]
     print(np.max(lnls)*-2)
+    print('reduced chi^2 = ',np.max(lnls)*-2 / dof)
+    print('inflate errors by :',np.sqrt(np.max(lnls)*-2 / dof),' to get red chi^2=1')
     print(mpars)
 
     confs = list(map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),

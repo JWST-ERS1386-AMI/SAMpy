@@ -51,17 +51,21 @@ def poly_ps(tcps,ccps,tt,ctin,cords,datatype,tvar=[],cvar=[],display=False):
 
         if display==True:
             tmin = np.min([np.min(ct),np.min(tt)])
-            f = plt.figure(figsize=(8,5))
-            plt.title(' CP Index '+str(tind)+'; Polycal Order '+str(cords),fontsize=16)
-            plt.plot((modts-tmin)/3600,model,color='k',label='Model',zorder=-1)
-            plt.plot([(tt-tmin)/3600,(tt-tmin)/3600],[ts,tcps[:,tind]],'k--',lw=0.5)
-            plt.scatter((ct-tmin)/3600,data,facecolors='grey',edgecolors='k',label='Ref. PSF',s=100)
-            plt.scatter((tt-tmin)/3600,tcps[:,tind],facecolors='purple',edgecolors='k',label='Science',s=100)
-            plt.legend(fontsize=14)
-            plt.ylabel(r'CP ($^\circ$)',fontsize=14)
-            plt.xlabel('Time (hours)',fontsize=14)
-            plt.xticks(fontsize=14)
-            plt.yticks(fontsize=14)
+            print((ct-tmin)*24)
+            f = plt.figure(figsize=(4,3.5))
+            plt.title(' Triangle '+str(tind)+'; Polycal Order '+str(cords))
+            plt.plot((modts-tmin)*24.,model,color='k',label='Model',zorder=-1)
+            plt.plot([(tt-tmin)*24.,(tt-tmin)*24],[ts,tcps[:,tind]],'k--',lw=0.5)
+            plt.scatter((ct-tmin)*24.,data,facecolors='grey',edgecolors='k',label='Ref. PSF')
+            plt.scatter((tt-tmin)*24,tcps[:,tind],facecolors='purple',edgecolors='k',label='Science')
+            plt.legend()
+            plt.ylabel(r'CP ($^\circ$)')
+            plt.xlabel('Time (hours)')
+            #plt.xticks(fontsize=14)
+            #plt.yticks(fontsize=14)
+            plt.subplots_adjust(left=0.2)
+            if (tind==23 and cords==1):
+                plt.savefig('/Users/stephsallum/Dropbox/Talks/220719_SPIE/polycal_example.pdf')
             plt.show()
 
         if datatype=='cps':

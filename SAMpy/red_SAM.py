@@ -18,11 +18,26 @@ def supergauss_fracw(pix,frac,m,size):
 
 def apply_wind(ims,lam,ps,display=False):
     ims_wind = []
+    wwidth = lam*1.0e-6*206265./ps*0.65
+    size = len(ims[0])
+    hbox = supergauss_fracw(wwidth,0.95,4.0,size)
     for im in ims:
-        size = len(im)
-        wwidth = lam*1.0e-6*206265./ps*0.65
-        hbox = supergauss_fracw(wwidth,0.95,4.0,size)
         ims_wind.append(im*hbox)
+    if display==True:
+        plt.imshow(hbox)
+        plt.colorbar()
+        plt.show()
+    return np.array(ims_wind)
+
+
+def apply_wind_groups(cubes,lam,ps,display=False):
+    ims_wind = np.zeros(cubes.shape)
+    wwidth = lam*1.0e-6*206265./ps*0.65
+    size = len(cubes[0,0])
+    hbox = supergauss_fracw(wwidth,0.95,4.0,size)
+    for ii,ims in enumerate(cubes):
+        for jj,im in enumerate(ims):
+            ims_wind[ii,jj]=im*hbox
     if display==True:
         plt.imshow(hbox)
         plt.colorbar()
@@ -50,10 +65,55 @@ def read_calints(file):
     print(dqflags.group)
     #flaglist = ['DO_NOT_USE','SATURATED','JUMP_DET','DROPOUT','OUTLIER','AD_FLOOR',
     #            'DEAD','HOT','WARM','NONLINEAR']
+    #flaglist = ['DO_NOT_USE','JUMP_DET','SATURATED']
+    flaglist = ['DO_NOT_USE']
+
     for flag in flaglist:
         bpmaps[np.where(input_model.dq & dqflags.pixel[flag] > 0)] = 1.0
     #bpmaps[np.where(np.isin(input_model.dq,list(dqflags.pixel.values())) == False)]=1.0
     return ims,dqs,bpmaps,roll,ut_m,filt
+
+def read_jumpstep_ims(filelist):
+    ims_all = []
+    dqs_all = []
+    bpmaps_all = []
+    rolls_all = []
+    uts_m_all = []
+    filts_all = []
+    for file in filelist:
+        ff = pyfits.open(file)
+        ims = ff[1].data
+        bps = ff[3].data
+        hdr0 = ff[0].header
+        hdr1 = ff[1].header
+        roll = hdr1['ROLL_REF']
+        filt = hdr0['FILTER']
+        ut_st = hdr0['EXPSTART']
+        ut_end = hdr0['EXPEND']
+        ut_m = hdr0['EXPMID']
+        tfr = hdr0['TFRAME']
+        foc = hdr0['FOCUSPOS']
+        input_model = datamodels.QuadModel(file) ##add something so that it can also do Image Models
+        dqs = input_model.groupdq
+        bpmaps = np.zeros(ims.shape)
+        #flaglist = ['DO_NOT_USE','SATURATED','JUMP_DET','DROPOUT','OUTLIER','AD_FLOOR',
+        #            'DEAD','HOT','WARM','NONLINEAR']
+        #flaglist = ['DO_NOT_USE','JUMP_DET','SATURATED']
+        flaglist = ['DO_NOT_USE']
+
+        for flag in flaglist:
+            bpmaps[np.where(input_model.dq & dqflags.pixel[flag] > 0)] = 1.0
+        #bpmaps[np.where(np.isin(input_model.dq,list(dqflags.pixel.values())) == False)]=1.0
+        for ii in range(len(ims)):
+            ims_all.append(ims[ii])
+            dqs_all.append(dqs[ii])
+            bpmaps_all.append(bpmaps[ii])
+            filts_all.append(filt)
+            rolls_all.append(roll)
+            uts_m_all.append(ut_m)
+    return np.array(ims_all),np.array(dqs_all),np.array(bpmaps_all),np.array(rolls_all),np.array(uts_m_all),filts_all
+
+
 
 def read_calint_ims(filelist):
     ims_all = []
@@ -78,9 +138,11 @@ def read_calint_ims(filelist):
         input_model = datamodels.CubeModel(file) ##add something so that it can also do Image Models
         dqs = input_model.dq
         bpmaps = np.zeros(ims.shape)
-        #flaglist = ['DO_NOT_USE','SATURATED','JUMP_DET','DROPOUT','OUTLIER','AD_FLOOR',
-        #            'DEAD','HOT','WARM','NONLINEAR']
-        flaglist = ['DO_NOT_USE']
+        flaglist = ['DO_NOT_USE','SATURATED','JUMP_DET','DROPOUT','OUTLIER','AD_FLOOR',
+                    'DEAD','HOT','WARM','NONLINEAR']
+        #flaglist = ['DO_NOT_USE','JUMP_DET','SATURATED']
+        #flaglist = ['DO_NOT_USE']
+
         for flag in flaglist:
             bpmaps[np.where(input_model.dq & dqflags.pixel[flag] > 0)] = 1.0
         #bpmaps[np.where(np.isin(input_model.dq,list(dqflags.pixel.values())) == False)]=1.0
@@ -114,7 +176,9 @@ def read_cal(file):
     #            'DEAD','HOT','WARM','NONLINEAR']
     #flaglist = ['DO_NOT_USE','SATURATED',
     #            'DEAD','HOT','WARM','NONLINEAR']
+    #flaglist = ['DO_NOT_USE','JUMP_DET','SATURATED']
     flaglist = ['DO_NOT_USE']
+
     #print(dqflags.pixel)
     #stop
     for flag in flaglist:
@@ -282,16 +346,65 @@ def center_interf(image,size,display=False):
     return y,x
 
 
-def subframe(ims,sfsize=70,sm=5):
-    ims_s = []
-    y,x = center_interf(np.median(ims,axis=0),sm)
-    print(y,x)
-    for im in ims:
-        #y,x = center_interf(im,sm)
-        imsub = im[y-sfsize//2:y+sfsize//2,
-                   x-sfsize//2:x+sfsize//2]
-        ims_s.append(imsub)
+def subframe(ims,sfsize=71,sm=5):
+    dims = ims.shape
+    if len(dims)==4:
+        y,x = center_interf(np.nanmedian(np.nanmedian(ims,axis=0),axis=0),sm)
+        ims_s = []
+        for imcube in ims:
+            tmp = []
+            for im in imcube:
+                imsub = im[y-sfsize//2:y+sfsize//2+1,
+                       x-sfsize//2:x+sfsize//2+1]
+                tmp.append(imsub)
+            ims_s.append(tmp)
+    else:
+        ims_s = []
+        y,x = center_interf(np.nanmedian(ims,axis=0),sm)
+        print(y,x)
+        for im in ims:
+            #y,x = center_interf(im,sm)
+            imsub = im[y-sfsize//2:y+sfsize//2+1,
+                       x-sfsize//2:x+sfsize//2+1]
+            ims_s.append(imsub)
     return np.array(ims_s)
+
+
+def subframe_circ(ims,sfsize=69,sm=5):
+    dims = ims.shape
+    if len(dims)==4:
+        medim = np.nanmedian(np.nanmedian(ims,axis=0),axis=0)
+        y,x = center_interf(medim,sm)
+        dists = np.array([[np.sqrt((ii-x)**2 + (jj-y)**2) 
+                           for ii in range(len(medim))] 
+                          for jj in range(len(medim))])
+        ims_s = []
+        for imcube in ims:
+            tmp = []
+            for im in imcube:
+                imcopy = copy.deepcopy(im)
+                imcopy[np.where(dists > sfsize//2)] = 0.0
+                imsub = imcopy[y-sfsize//2:y+sfsize//2,
+                       x-sfsize//2:x+sfsize//2]
+                tmp.append(imsub)
+            ims_s.append(tmp)
+    else:
+        ims_s = []
+        medim = np.nanmedian(ims,axis=0)
+        y,x = center_interf(medim,sm)
+        dists = np.array([[np.sqrt((ii-x)**2 + (jj-y)**2) 
+                           for ii in range(len(medim))] 
+                          for jj in range(len(medim))])
+        for im in ims:
+            #y,x = center_interf(im,sm)
+            imcopy = copy.deepcopy(im)
+            imcopy[np.where(dists > sfsize//2)] = 0.0
+            imsub = imcopy[y-sfsize//2:y+sfsize//2,
+                       x-sfsize//2:x+sfsize//2]
+            ims_s.append(imsub)
+    return np.array(ims_s)
+
+
 
 
 

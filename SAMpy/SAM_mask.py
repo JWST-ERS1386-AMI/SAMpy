@@ -30,7 +30,7 @@ def diag(Ts):
     return (S_eigenvectors).real
 
 
-def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0,xadj=0,yadj=0,pmask=125,sp=20,redo=False):
+def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0,xadj=0,yadj=0,pmask=125,sp=20,redo=False,fcut=0.5):
     """
     Generates the sampling coordinates. Desinged to achieve the same by
     performing the following steps:
@@ -70,7 +70,7 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
     if inst == 'niriss':
         nholes=7
         #in fourier space for the power spectrum
-        fcut = 0.3
+        #fcut = 0.3
         sd_m=0.75
         #mname='/Users/sray/Desktop/WorkFile/Year2/AMIPipeline/Sallum/Analysis/NIRISS_7holeMask.txt'
         mname = 'NIRISS_7holeMask.txt'
@@ -113,7 +113,7 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
 
 
     bls_uv=np.matrix([row[:] for row in bls]) #Copying bls
-    bls_uv[:,0]*=-1 #Changing coordinates u -> -u as being projected on image plane ?
+    bls_uv[:,0]*=-1 #recording u as +ve going left in image
     pyfits.writeto(cdir+'bl_uvs.fits',bls_uv,overwrite=True)
     bl_arr = np.zeros([len(bls_uv),npix,npix])
 
@@ -126,7 +126,6 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
     lams,trans=lams[np.where(trans>0.5)],trans[np.where(trans>0.5)]
     #Selecting every nth point
     lams,trans=lams[::sp],trans[::sp]
-    print(lams)
 
 
 
@@ -134,18 +133,21 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
     lamm = [np.min(lams),np.max(lams)] #Wavelength boundary ? [::sint] ?
 
     psc = 1.0/(float(npix)*pscam)*206265.0*lamc*1e-06
+    
 
-    bls_pix = np.round(np.array([npix/2,npix/2]))+bls/psc #in pixel coordinates?
+    bls_pix = np.round(np.array([npix//2,npix//2]))+bls/psc #in pixel coordinates?
     pyfits.writeto(cdir+'bl_pix.fits',bls_pix,overwrite=True)
     bsm = np.max([sd_m/(1.0/(float(npix)*pscam)*206265.0*j*1e-06) for j in lamm])
 
 
 
-    fg = np.array([[[y,x]
-     for x in range(npix)]
-     for y in range(npix)]) 
+
 
     bl_pix_arr=[]
+    PSall = np.zeros([npix,npix])
+    fg_u = np.array([[[y,x]
+                         for x in range(npix)]
+                         for y in range(npix)])
 
     for i in range(len(bls_uv)):
         if ((os.path.isfile(cdir+'v2_ind'+str(i)+'.fits')==False) or (redo==True)):
@@ -160,11 +162,20 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                 #print('Doing wavelength=',lam)
 
                 """Make NRM mask here"""
-                f = np.zeros([npix,npix])
-                ps=1/(npix*pscam)*206265*lam*1e-06
+                psc_des = 0.025
+                npixFT=int(np.round(1.0/(psc_des/(206265.0*lam*1e-06)*pscam)))
+                if npixFT%2==0: npixFT+=1
+                #print(npixFT)
+                
+                fg = np.array([[[y,x]
+                         for x in range(npixFT)]
+                         for y in range(npixFT)]) 
+
+                f = np.zeros([npixFT,npixFT])
+                #ps=1/(npix*pscam)*206265*lam*1e-06
                 #bh_p is a coordinate change of bh according to the fourier plane and takes 2 points at a time
-                bh_p = np.array(np.round(np.array([npix/2,npix/2])
-                + bh[i]/ps),dtype=int)
+                bh_p = np.array(np.round(np.array([npixFT//2,npixFT//2])
+                + bh[i]/psc_des),dtype=int)
 
                 #print('bh_p=',bh_p)
 
@@ -177,11 +188,10 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
 
                 elif inst=='niriss': #hexagonal holes
                     sd_m=0.75 #flat to flat distance of subaperture (hexagonal)
-                    ps=1/(npix*pscam)*206265*lam*1e-06
-                    sd = sd_m / ps #flat to flat distance adjusted to platescale
+                    sd = sd_m / psc_des #flat to flat distance adjusted to platescale
                     for p in bh_p: #for each hole pair
                         HoleInPlane=[] #Mapping invididual holes
-                        hole_Centre=p[0],p[1]
+                        hole_Centre=p[1],p[0]
                         hole_SideLength=sd/(math.sqrt(3))
                         vertices=[] #vertices of hexagonal holes
                         for new_index in range (6): # finding vertices of hexagonal hole
@@ -207,7 +217,12 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                             HoleInPlane.append(np.array(HoleInPlane_slice))
                         f=f+HoleInPlane #combining the holes one by one
                     #obtaining the transpose to match the published coordinates
-                    f=np.transpose(f)
+                    #plt.imshow(f,origin='lower')
+                    #plt.show()
+                    #f=np.transpose(f)
+                    #plt.imshow(f,origin='lower')
+                    #plt.show()
+                    #stop
 
                 else:
                     raise ValueError('inst must be a string specifying one of the\
@@ -215,18 +230,25 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                      vlt (for SPHERE/VLT)')
 
                 FT = abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(f))))**2
-                ftmp += FT*tt
+                #plt.imshow(FT[npixFT//2-25:npixFT//2+26,npixFT//2-25:npixFT//2+26]**0.1)
+                #plt.show()
+                #stop
+                if npix%2!=0:
+                    ftmp += FT[npixFT//2-npix//2:npixFT//2+npix//2+1,npixFT//2-npix//2:npixFT//2+npix//2+1]*tt
+                else:
+                    ftmp += FT[npixFT//2-npix//2:npixFT//2+npix//2,npixFT//2-npix//2:npixFT//2+npix//2]*tt
             PS = np.fft.fftshift(abs(np.fft.fft2(np.fft.fftshift(ftmp))))
             PS = PS/np.amax(PS) #normalising power spetrum to highest value
-            #Masking the central maxima of the power spectrum
+            
+            #print('Masking the central maxima of the power spectrum')
             if inst=='vlt': #Circular masking
                 ds = np.sqrt(np.sum((fg-[npix/2,npix/2])**2,axis=2))
                 PS[np.where(ds<pmask)] = 0.0
 
             elif inst =='niriss': #Hexagonal masking
                 MaskLayer = np.zeros(np.shape(PS)) #np.full((np.shape(PS)), 1)
-                mask_Centre = (npix/2),(npix/2)
-                mask_SideLength = pmask/(math.sqrt(3))
+                mask_Centre = (npix//2),(npix//2)
+                mask_SideLength = int(125.0/4.0)/4.8*3.8*npix/257*1.0/(math.sqrt(3))
                 vertices=[] #Vertices of hexagonal mask for power spectrum
                 for mask_index in range (6): #finding vertices of hexagonal mask
                     RotationAngle=np.radians(mask_index*60)
@@ -237,7 +259,7 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                     vertices.append(vertex)
                 mask_hexagon = Polygon(np.array(vertices))
                 MaskInPlane=[]
-                for PixelLine in fg: #changing values at the mask:
+                for PixelLine in fg_u: #changing values at the mask:
                     #1d slice of the plane to map the holes
                     MaskInPlane_slice=[]
                     for Pixel in PixelLine:
@@ -254,12 +276,15 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                 MaskLayer=1-MaskLayer
                 MaskLayer=np.transpose(MaskLayer) #to be consistent with the holes
                 PS=np.multiply(MaskLayer,PS)
-
+                #plt.imshow(PS**0.1)
+                #plt.show()
+                #stop
             bl_arr[i]=PS
+            PSall+=PS
 
             ss = np.where(bl_arr[i] > fcut)
+            ####writing out x, y coords - these are the coordinates that will get sampled in the FTed images
             S = np.array([[ss[1][x],ss[0][x]] for x in range(len(ss[0]))])
-
             if len(S)==0:
                 print ('nowhere to sample!')
                 exit()
@@ -267,7 +292,16 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
         else:
             S = pyfits.getdata(cdir+'v2_ind'+str(i)+'.fits')
         bl_pix_arr.append(S)
- 
+    if redo==False:
+        PSall = pyfits.getdata(cdir+'syn_pspec.fits')
+    else:
+        pyfits.writeto(cdir+'syn_pspec.fits',np.array(PSall),overwrite=True)
+
+    plt.imshow(PSall**0.1,origin='lower')
+    for x in range(len(bl_pix_arr)):
+        plt.scatter(np.array(bl_pix_arr[x])[:,0],np.array(bl_pix_arr[x])[:,1])
+    plt.show()
+
 
     bls_uv = np.array(bls_uv)
     bls_pix = np.array(bls_pix)
@@ -290,13 +324,25 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                 tmp = bl_pix_arr[ind][np.where(diff1 < diff2)]
                 uvtmp.append(np.squeeze(np.asarray(bls_uv[ind])))
                 uvptmp.append(bls_pix[ind])
+                plt.scatter(bl_pix_arr[ind][:,0],bl_pix_arr[ind][:,1],c='grey')
+                plt.scatter(tmp[:,0],tmp[:,1],c='b')
+                plt.scatter(bls_pix[ind][0],bls_pix[ind][1],c='k')
+                plt.axhline(npix/2)
+                plt.axvline(npix/2)
             if mrow[ind] == -1:
                 tmp = bl_pix_arr[ind][np.where(diff1 > diff2)]
                 uvtmp.append(-(np.squeeze(np.asarray(bls_uv[ind]))))
                 uvptmp.append(np.array([npix,npix])-bls_pix[ind])
+                bls_toplot = np.array([npix,npix])-bls_pix[ind]
+                plt.scatter(bl_pix_arr[ind][:,0],bl_pix_arr[ind][:,1],c='grey')
+                plt.scatter(tmp[:,0],tmp[:,1],c='r')
+                plt.scatter(bls_pix[ind][0],bls_pix[ind][1],c='k')
+                plt.axhline(npix/2)
+                plt.axvline(npix/2)
             tmp = np.array(tmp)
             pyfits.writeto(cdir+'ind'+str(i)+'_vert'+str(count)+'.fits',tmp,overwrite=True)
             count+=1
+        plt.show()
         cp_uvs.append(uvtmp)
         cps_pix.append(uvptmp)
     pyfits.writeto(cdir+'cp_uvs.fits',np.array(cp_uvs),overwrite=True)
@@ -312,6 +358,10 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
         uvptmp = bls_pix[ind]
         cvis_uvs.append(uvtmp)
         cvis_pix.append(uvptmp)
+        plt.scatter(tmp[:,0],tmp[:,1])
+        plt.axhline(npix/2)
+        plt.axvline(npix/2)
+        plt.show()
         pyfits.writeto(cdir+'cvis_ind'+str(ind)+'.fits',np.array(tmp),overwrite=True)
     pyfits.writeto(cdir+'cvis_uvs.fits',np.array(cvis_uvs),overwrite=True)
     pyfits.writeto(cdir+'cvis_pix.fits',np.array(cvis_pix),overwrite=True)

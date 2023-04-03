@@ -1,5 +1,4 @@
 from scipy.signal import medfilt2d as medfilt
-from supergauss import *
 import emcee
 from scipy import optimize,ndimage
 import numpy as np

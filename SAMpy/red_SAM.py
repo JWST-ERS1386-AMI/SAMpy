@@ -344,7 +344,9 @@ def center_interf(image,size,display=False):
          uniform filter image
          then center interferogram
     """
-    im1f=ndimage.filters.gaussian_filter(image,size)
+    imcopy = copy.deepcopy(image)
+    imcopy[np.where(np.isnan(imcopy)==True)]=0.0
+    im1f=ndimage.filters.gaussian_filter(imcopy,size)
     y,x=np.unravel_index(np.argmax(im1f.flatten()),im1f.shape)
     if display == True:
         f = plt.figure()

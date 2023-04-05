@@ -51,7 +51,10 @@ def read_calints(file):
     bps = ff[3].data
     hdr0 = ff[0].header
     hdr1 = ff[1].header
-    roll = hdr1['ROLL_REF']
+    roll_ref = hdr1['ROLL_REF']
+    vpar = hdr1['VPARITY']
+    v31_yang = hdr1['V3I_YANG']
+    parang = roll_ref - v31_yang*vpar    
     filt = hdr0['FILTER']
     ut_st = hdr0['EXPSTART']
     ut_end = hdr0['EXPEND']
@@ -71,7 +74,7 @@ def read_calints(file):
     for flag in flaglist:
         bpmaps[np.where(input_model.dq & dqflags.pixel[flag] > 0)] = 1.0
     #bpmaps[np.where(np.isin(input_model.dq,list(dqflags.pixel.values())) == False)]=1.0
-    return ims,dqs,bpmaps,roll,ut_m,filt
+    return ims,dqs,bpmaps,parang,ut_m,filt
 
 def read_jumpstep_ims(filelist):
     ims_all = []
@@ -86,7 +89,10 @@ def read_jumpstep_ims(filelist):
         bps = ff[3].data
         hdr0 = ff[0].header
         hdr1 = ff[1].header
-        roll = hdr1['ROLL_REF']
+        roll_ref = hdr1['ROLL_REF']
+        vpar = hdr1['VPARITY']
+        v31_yang = hdr1['V3I_YANG']
+        parang = roll_ref - v31_yang*vpar
         filt = hdr0['FILTER']
         ut_st = hdr0['EXPSTART']
         ut_end = hdr0['EXPEND']
@@ -109,7 +115,7 @@ def read_jumpstep_ims(filelist):
             dqs_all.append(dqs[ii])
             bpmaps_all.append(bpmaps[ii])
             filts_all.append(filt)
-            rolls_all.append(roll)
+            rolls_all.append(parang)
             uts_m_all.append(ut_m)
     return np.array(ims_all),np.array(dqs_all),np.array(bpmaps_all),np.array(rolls_all),np.array(uts_m_all),filts_all
 
@@ -128,7 +134,10 @@ def read_calint_ims(filelist):
         bps = ff[3].data
         hdr0 = ff[0].header
         hdr1 = ff[1].header
-        roll = hdr1['ROLL_REF']
+        roll_ref = hdr1['ROLL_REF']
+        vpar = hdr1['VPARITY']
+        v31_yang = hdr1['V3I_YANG']
+        parang = roll_ref - v31_yang*vpar
         filt = hdr0['FILTER']
         ut_st = hdr0['EXPSTART']
         ut_end = hdr0['EXPEND']
@@ -151,7 +160,7 @@ def read_calint_ims(filelist):
             dqs_all.append(dqs[ii])
             bpmaps_all.append(bpmaps[ii])
             filts_all.append(filt)
-            rolls_all.append(roll)
+            rolls_all.append(parang)
             uts_m_all.append(ut_m)
     return np.array(ims_all),np.array(dqs_all),np.array(bpmaps_all),np.array(rolls_all),np.array(uts_m_all),filts_all
 
@@ -161,7 +170,10 @@ def read_cal(file):
     bps = ff[3].data
     hdr0 = ff[0].header
     hdr1 = ff[1].header
-    roll = hdr1['ROLL_REF']
+    roll_ref = hdr1['ROLL_REF']
+    vpar = hdr1['VPARITY']
+    v31_yang = hdr1['V3I_YANG']
+    parang = roll_ref - v31_yang*vpar
     ut_st = hdr0['EXPSTART']
     ut_end = hdr0['EXPEND']
     ut_m = hdr0['EXPMID']
@@ -184,7 +196,7 @@ def read_cal(file):
     for flag in flaglist:
         bpmaps[np.where(input_model.dq & dqflags.pixel[flag] > 0)] = 1.0
     #bpmaps[np.where(np.isin(input_model.dq,list(dqflags.pixel.values())) == False)]=1.0
-    return ims,dqs,bpmaps,roll,ut_m,filt
+    return ims,dqs,bpmaps,parang,ut_m,filt
 
 def parse_dqmap(file):
     input_model = datamodels.ImageModel(file)

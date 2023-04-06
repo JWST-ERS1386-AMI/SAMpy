@@ -16,16 +16,28 @@ def supergauss_fracw(pix,frac,m,size):
     arr = np.exp(-ds**m/sigma**m)
     return arr
 
-def apply_wind(ims,lam,ps,display=False):
+def supergauss_hw(FWHM,m,size):
+    k = -1.0 / (2*(FWHM/2.35482)**m)
+    ds = np.array([[np.sqrt(np.array((x-size//2)**2+(y-size//2)**2)) for x in range(size)]
+        for y in range(size)])
+    arr = np.exp(k*ds**m)
+    return arr
+
+def apply_wind(ims,HWHM,display=False):
     ims_wind = []
-    wwidth = lam*1.0e-6*206265./ps*0.65
+    #wwidth = lam*1.0e-6*206265./ps*0.65
     size = len(ims[0])
-    hbox = supergauss_fracw(wwidth,0.95,4.0,size)
+    #hbox = supergauss_fracw(wwidth,0.95,4.0,size)
+    hbox = supergauss_hw(HWHM,4.0,size)
     for im in ims:
         ims_wind.append(im*hbox)
     if display==True:
         plt.imshow(hbox)
         plt.colorbar()
+        plt.contour(hbox,levels=[0.5],colors='w')
+        plt.contour(im/np.max(im),levels=[0.1],colors='k')
+        plt.axhline(size//2)
+        plt.axvline(size//2)
         plt.show()
     return np.array(ims_wind)
 
@@ -360,7 +372,7 @@ def center_interf(image,size,display=False):
     return y,x
 
 
-def subframe(ims,sfsize=71,sm=5):
+def subframe(ims,sfsize=64,sm=5):
     dims = ims.shape
     if len(dims)==4:
         y,x = center_interf(np.nanmedian(np.nanmedian(ims,axis=0),axis=0),sm)
@@ -368,8 +380,8 @@ def subframe(ims,sfsize=71,sm=5):
         for imcube in ims:
             tmp = []
             for im in imcube:
-                imsub = im[y-sfsize//2:y+sfsize//2+1,
-                       x-sfsize//2:x+sfsize//2+1]
+                imsub = im[y-sfsize//2:y+sfsize//2,
+                       x-sfsize//2:x+sfsize//2]
                 tmp.append(imsub)
             ims_s.append(tmp)
     else:
@@ -378,13 +390,13 @@ def subframe(ims,sfsize=71,sm=5):
         print(y,x)
         for im in ims:
             #y,x = center_interf(im,sm)
-            imsub = im[y-sfsize//2:y+sfsize//2+1,
-                       x-sfsize//2:x+sfsize//2+1]
+            imsub = im[y-sfsize//2:y+sfsize//2,
+                       x-sfsize//2:x+sfsize//2]
             ims_s.append(imsub)
     return np.array(ims_s)
 
 
-def subframe_circ(ims,sfsize=69,sm=5):
+def subframe_circ(ims,sfsize=64,sm=5):
     dims = ims.shape
     if len(dims)==4:
         medim = np.nanmedian(np.nanmedian(ims,axis=0),axis=0)

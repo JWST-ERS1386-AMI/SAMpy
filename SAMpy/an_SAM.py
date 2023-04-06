@@ -117,7 +117,9 @@ def find_cvis_pix(mdir,cvistype='multi'):
             bclist.append(ps)
     return bclist
 
-def find_tris_multi_2(ccs,cdir,ny=256,nx=256,meters=False,uv=False,pscam=0.065,lamc=3.8,redo_calc=False): #Function 2 definition
+
+
+def find_tris_multi_pavg(ccs,cdir,ny=256,nx=256,meters=False,uv=False,pscam=0.065,lamc=3.8,redo_calc=False): #Function 2 definition
     """
     calculates sampling coordinates for "Monnier"
     closure phase calculation method
@@ -130,48 +132,19 @@ def find_tris_multi_2(ccs,cdir,ny=256,nx=256,meters=False,uv=False,pscam=0.065,l
     delete the "cpsamp" files from the mask directory, sorry.
     """
     ccall = []
-    freqs = np.fft.fftshift(np.fft.fftfreq(nx))
     for x in range(len(ccs)):
         c = ccs[x]
-        ifile = cdir+'cpsamp_ind_'+str(x)+'.fits'
-        if (os.path.isfile(ifile)==False) or (redo_calc==True): #Executed during first run
-            print ('\n Calculating triangle: '+str(x+1)+' of '+str(len(ccs)))
-            ib = cdir+'ind'+str(x)+'_vert'
-            p0 = pyfits.getdata(ib+'0.fits')
-            p1 = pyfits.getdata(ib+'1.fits')
-            p2 = pyfits.getdata(ib+'2.fits')
-            g = []
-            for pp1 in tqdm(p0):
-                if pp1[1] not in [8,16,24,40,56,72]:
-                    for pp2 in p1:
-                        if pp2[1] not in [8,16,24,40,56,72]:
-                    #cy=ny//2
-                    #cx=nx//2
-                            for pp3 in p2:
-                                if pp3[1] not in [8,16,24,40,56,72]:
-                                    sumx = freqs[pp1[0]]+freqs[pp2[0]]+freqs[pp3[0]]
-                                    sumy = freqs[pp1[1]]+freqs[pp2[1]]+freqs[pp3[1]]
-                                    if sumx==0:
-                                        if sumy==0:
-                                            g.append(np.array([pp1,pp2,pp3],dtype='int'))
-            print(len(g))
-            print('---------------')
-            g = np.array(g)
-            pyfits.writeto(ifile,g,overwrite=True)
-        else: g = pyfits.getdata(ifile)
-        ccall.append(g)
-    if meters: 
-        ###returns u,v that go with pixel sampling measured in m
-        ###need to flip us to get to true u,v coords
-        ccall2 = np.array(copy.deepcopy(ccall))
-        psc = 1.0/(float(nx)*pscam)*206265.0*lamc*1e-06
-        ccall2 = ccall2 - int(ny/2)
-        ccall2 = ccall2*psc
-        if uv: ###flipping u to get to real u,v
-            for i in range(len(ccall2)):
-                ccall2[i][:,:,0] = -ccall2[i][:,:,0]
-        return ccall2
+        ib = cdir+'ind'+str(x)+'_vert'
+        p0 = pyfits.getdata(ib+'0.fits')
+        p1 = pyfits.getdata(ib+'1.fits')
+        p2 = pyfits.getdata(ib+'2.fits')
+        ccall.append([p0,p1,p2])
     return np.array(ccall)
+
+
+
+
+
 
 
 def find_tris_multi(ccs,cdir,ny=256,nx=256,meters=False,uv=False,pscam=0.065,lamc=3.8,redo_calc=False): #Function 2 definition
@@ -298,6 +271,39 @@ def calc_cps_single(ims,mdir,nx=256,ny=256,display=False,useW=True):
     return bs_all, cps, cov, var, stdE
 
 
+
+def calc_cps_pavg_image(image,gcs,imcount,nx=256,ny=256,display=False,save=False,fout=None):
+    FT = fft_image(image,nx,ny)
+    bs = []
+    for ind in range(len(gcs)):
+        gc = gcs[ind]
+
+        tomean = []
+        mps = []
+        for i in range(3):
+            ps = FT[gc[i][:,1],gc[i][:,0]]/FT[ny//2,nx//2]
+            tomean.append(ps)
+            mps.append(np.mean(ps))
+        bis_tmp = np.prod(mps)
+        
+        if save: 
+            for i in range(3):
+                fout['int'+str(imcount)+'/tri'+str(ind)+'/ind'+str(i)] = np.array(tomean[i],dtype='complex') ###all pixel triangles for one triangle
+        bs.append(bis_tmp)
+        
+        
+        if display==True:
+            f=plt.figure(figsize=(5,5))
+            ax = f.add_subplot(111)
+            plt.imshow(np.abs(FT)**0.1)
+            for i in range(3):
+                plt.scatter(gc[i][:,0],gc[i][:,1],edgecolors='k',facecolors='None')
+            ax.set_yticks([])
+            ax.set_xticks([])
+            plt.show()
+
+    return np.array(bs)
+
 def calc_cps_multi_image(image,gcs,imcount,nx=256,ny=256,display=False,save=False,fout=None):
     FT = fft_image(image,nx,ny)
     bs = []
@@ -320,15 +326,20 @@ def calc_cps_multi_image(image,gcs,imcount,nx=256,ny=256,display=False,save=Fals
             plt.show()
                 #stop
         tomean = []
+        tomean_ps = []
         for p in range(len(gc)):
-            for j in range(3):
-                if j==0:
-                    tomult = FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
-                else: tomult*=FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
+            tomults = [FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2] for j in range(3)]
+            tomult = np.prod(tomults)
+            #for j in range(3):
+            #    if j==0:
+            #        tomult = FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
+            #    else: tomult*=FT[gc[p,j,1],gc[p,j,0]]/FT[ny//2,nx//2]
             tomean.append(tomult)
+            tomean_ps.append(tomults)
         bis_tmp = np.mean(tomean)
         if save: 
-            fout['int'+str(imcount)+'/tri'+str(ind)] = tomean ###all pixel triangles for one triangle
+            fout['int'+str(imcount)+'/tri'+str(ind)] = np.array(tomean,dtype='complex') ###all pixel triangles for one triangle
+            #fout['int'+str(imcount)+'/tri'+str(ind)] = np.array(tomean_ps,dtype='complex') ###all pixel triangles for one triangle
         bs.append(bis_tmp)
     return np.array(bs)
 
@@ -366,16 +377,15 @@ def calc_cps_multi_groupimage(image,gcs,imcount,groupcount,nx=256,ny=256,display
         bs.append(bis_tmp)
     return np.array(bs)
 
-def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filename='',redo_calc=False): #Master function
+def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filebase='',redo_calc=False): #Master function
     """
     calculates closure phases using multiple pixel triangles
     for each triangle of baselines
     """
     ccs = make_cpcoords(cdir)
     gcs = find_tris_multi(ccs,cdir,redo_calc=redo_calc,nx=nx,ny=ny)
-    #gcs = find_tris_multi_2(ccs,cdir,redo_calc=redo_calc,nx=nx,ny=ny)
     if save_allpix:
-        fout = h5py.File(filename+'.hdf5', 'w')
+        fout = h5py.File(filebase+'_pixtri.hdf5', 'w')
     else:
         fout = None
     bs_all = []
@@ -390,6 +400,37 @@ def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=Fal
     if save_allpix: fout.close()
     if len(ims)>1: cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
     else: cov,var,stdE = None,None,None
+    pyfits.writeto(filebase+'_bspecs.fits',np.array([np.real(bs_all),np.imag(bs_all)]),overwrite='True')
+    pyfits.writeto(filebase+'_cps.fits',cps,overwrite='True')
+    pyfits.writeto(filebase+'_cpcov.fits',cov,overwrite='True')
+    return np.array([bs_all,cps,Tas,cov,var,stdE])
+
+def calc_cps_pavg(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filebase='',redo_calc=False): #Master function
+    """
+    calculates closure phases using multiple pixel triangles
+    for each triangle of baselines
+    """
+    ccs = make_cpcoords(cdir)
+    gcs = find_tris_multi_pavg(ccs,cdir,redo_calc=redo_calc,nx=nx,ny=ny)
+    if save_allpix:
+        fout = h5py.File(filebase+'_pixtri.hdf5', 'w')
+    else:
+        fout = None
+    bs_all = []
+    for xx,i in tqdm(enumerate(ims)):        
+        bs = calc_cps_pavg_image(i,gcs,xx,nx=nx,ny=ny,display=display,save=save_allpix,fout=fout)
+        display=False
+        bs_all.append(bs)
+    cas = np.angle(bs_all,deg=1)
+    Aas = np.abs(bs_all)
+    Tas = np.abs(np.mean(bs_all,axis=0))
+    cps = np.angle(np.mean(bs_all,axis=0),deg=1)
+    if save_allpix: fout.close()
+    if len(ims)>1: cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
+    else: cov,var,stdE = None,None,None
+    pyfits.writeto(filebase+'_bspecs.fits',np.array([np.real(bs_all),np.imag(bs_all)]),overwrite='True')
+    pyfits.writeto(filebase+'_cps.fits',cps,overwrite='True')
+    pyfits.writeto(filebase+'_cpcov.fits',cov,overwrite='True')
     return np.array([bs_all,cps,Tas,cov,var,stdE])
 
 

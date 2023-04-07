@@ -81,7 +81,8 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
     post[np.where(post[:,0] > 0)] += np.array([xadj,yadj])
     c,s = np.cos(np.radians(-rot)),np.sin(np.radians(-rot))
     pos = np.array([[p[0]*c-p[1]*s,p[0]*s+p[1]*c] for p in post])
-
+    #pos[:,0] = -1.0*pos[:,0]
+    
     """Calculating closure phase vectors"""
     cps = np.array([[pos[x]-pos[y],pos[y]-pos[z],pos[z]-pos[x]]
         for x in range(len(pos)) for y in range(len(pos))
@@ -163,8 +164,12 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
 
                 """Make NRM mask here"""
                 psc_des = 0.025
+                
                 npixFT=int(np.round(1.0/(psc_des/(206265.0*lam*1e-06)*pscam)))
                 if npixFT%2==0: npixFT+=1
+                if i==0 and ll==0:
+                    Fall = np.zeros([npixFT,npixFT])
+                
                 #print(npixFT)
                 
                 fg = np.array([[[y,x]
@@ -197,8 +202,8 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                         for new_index in range (6): # finding vertices of hexagonal hole
                             RotationAngle=np.radians(new_index*60)
                             vertex_x, vertex_y = \
-                            hole_Centre[0]+hole_SideLength*np.cos(RotationAngle),\
-                            hole_Centre[1]+hole_SideLength*np.sin(RotationAngle)
+                            hole_Centre[0]+hole_SideLength*np.sin(RotationAngle),\
+                            hole_Centre[1]+hole_SideLength*np.cos(RotationAngle)
                             vertex=np.array([vertex_x, vertex_y])
                             vertices.append(vertex)
                         hole_hexagon = Polygon(np.array(vertices))
@@ -216,13 +221,11 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                                 else: HoleInPlane_slice.append(0)
                             HoleInPlane.append(np.array(HoleInPlane_slice))
                         f=f+HoleInPlane #combining the holes one by one
+                        
                     #obtaining the transpose to match the published coordinates
-                    #plt.imshow(f,origin='lower')
-                    #plt.show()
-                    #f=np.transpose(f)
-                    #plt.imshow(f,origin='lower')
-                    #plt.show()
-                    #stop
+                    if ll==0:
+                        plt.imshow(f,origin='lower')
+                        plt.show()
 
                 else:
                     raise ValueError('inst must be a string specifying one of the\
@@ -237,6 +240,7 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                     ftmp += FT[npixFT//2-npix//2:npixFT//2+npix//2+1,npixFT//2-npix//2:npixFT//2+npix//2+1]*tt
                 else:
                     ftmp += FT[npixFT//2-npix//2:npixFT//2+npix//2,npixFT//2-npix//2:npixFT//2+npix//2]*tt
+                if ll==0: Fall+=np.transpose(f)
             PS = np.fft.fftshift(abs(np.fft.fft2(np.fft.fftshift(ftmp))))
             PS = PS/np.amax(PS) #normalising power spetrum to highest value
             
@@ -253,8 +257,8 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                 for mask_index in range (6): #finding vertices of hexagonal mask
                     RotationAngle=np.radians(mask_index*60)
                     vertex_x, vertex_y = \
-                    mask_Centre[0]+mask_SideLength*np.cos(RotationAngle),\
-                    mask_Centre[1]+mask_SideLength*np.sin(RotationAngle)
+                    mask_Centre[0]+mask_SideLength*np.sin(RotationAngle),\
+                    mask_Centre[1]+mask_SideLength*np.cos(RotationAngle)
                     vertex=np.array([vertex_x, vertex_y])
                     vertices.append(vertex)
                 mask_hexagon = Polygon(np.array(vertices))
@@ -276,9 +280,9 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
                 MaskLayer=1-MaskLayer
                 MaskLayer=np.transpose(MaskLayer) #to be consistent with the holes
                 PS=np.multiply(MaskLayer,PS)
-                #plt.imshow(PS**0.1)
-                #plt.show()
-                #stop
+                if ll==0:
+                    plt.imshow(PS**0.1)
+                    plt.show()
             bl_arr[i]=PS
             PSall+=PS
 
@@ -300,6 +304,9 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
     plt.imshow(PSall**0.1,origin='lower')
     for x in range(len(bl_pix_arr)):
         plt.scatter(np.array(bl_pix_arr[x])[:,0],np.array(bl_pix_arr[x])[:,1])
+    plt.show()
+    
+    plt.imshow(Fall,origin='lower')
     plt.show()
 
 
@@ -358,10 +365,6 @@ def make_coords(cdir,jwst_filt='f380m',inst='niriss',pscam=0.0656,npix=256,rot=0
         uvptmp = bls_pix[ind]
         cvis_uvs.append(uvtmp)
         cvis_pix.append(uvptmp)
-        plt.scatter(tmp[:,0],tmp[:,1])
-        plt.axhline(npix/2)
-        plt.axvline(npix/2)
-        plt.show()
         pyfits.writeto(cdir+'cvis_ind'+str(ind)+'.fits',np.array(tmp),overwrite=True)
     pyfits.writeto(cdir+'cvis_uvs.fits',np.array(cvis_uvs),overwrite=True)
     pyfits.writeto(cdir+'cvis_pix.fits',np.array(cvis_pix),overwrite=True)

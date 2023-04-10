@@ -46,6 +46,8 @@ def fft_image(im,nx,ny):
     boxsize = len(im)
     imb = np.pad(im,(((ny-len(im))//2,(ny-len(im))//2),
                      ((nx-len(im[0]))//2,(nx-len(im[0]))//2)))
+    #print(imb.shape)
+    #stop
     fft=np.fft.fftshift(np.fft.fft2(np.fft.fftshift(imb)))
     return fft
 
@@ -295,11 +297,11 @@ def calc_cps_pavg_image(image,gcs,imcount,nx=256,ny=256,display=False,save=False
         if display==True:
             f=plt.figure(figsize=(5,5))
             ax = f.add_subplot(111)
-            plt.imshow(np.abs(FT)**0.1)
+            plt.imshow(np.angle(FT,deg=1),origin='lower')
             for i in range(3):
                 plt.scatter(gc[i][:,0],gc[i][:,1],edgecolors='k',facecolors='None')
-            ax.set_yticks([])
-            ax.set_xticks([])
+            #ax.set_yticks([])
+            #ax.set_xticks([])
             plt.show()
 
     return np.array(bs)
@@ -312,7 +314,7 @@ def calc_cps_multi_image(image,gcs,imcount,nx=256,ny=256,display=False,save=Fals
         if display==True:
             f=plt.figure(figsize=(5,5))
             ax = f.add_subplot(111)
-            plt.imshow(np.abs(FT)**0.1)
+            plt.imshow(np.abs(FT)**0.1,origin='lower')
             tp = np.mean(gc,axis=0)
             plt.scatter(gc[:,:,0],gc[:,:,1],edgecolors='k',facecolors='None')
             rinds=np.random.choice(len(gc),5)
@@ -351,7 +353,7 @@ def calc_cps_multi_groupimage(image,gcs,imcount,groupcount,nx=256,ny=256,display
         if display==True:
             f=plt.figure(figsize=(5,5))
             ax = f.add_subplot(111)
-            plt.imshow(np.abs(FT)**0.1)
+            plt.imshow(np.abs(FT)**0.1,origin='lower')
             tp = np.mean(gc,axis=0)
             plt.scatter(gc[:,:,0],gc[:,:,1],edgecolors='k',facecolors='None')
             rinds=np.random.choice(len(gc),5)
@@ -398,11 +400,12 @@ def calc_cps_multi(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=Fal
     Tas = np.abs(np.mean(bs_all,axis=0))
     cps = np.angle(np.mean(bs_all,axis=0),deg=1)
     if save_allpix: fout.close()
-    if len(ims)>1: cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
+    if len(ims)>1: 
+        cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
+        pyfits.writeto(filebase+'_bspecs.fits',np.array([np.real(bs_all),np.imag(bs_all)]),overwrite='True')
+        pyfits.writeto(filebase+'_cps.fits',cps,overwrite='True')
+        pyfits.writeto(filebase+'_cpcov.fits',cov,overwrite='True')
     else: cov,var,stdE = None,None,None
-    pyfits.writeto(filebase+'_bspecs.fits',np.array([np.real(bs_all),np.imag(bs_all)]),overwrite='True')
-    pyfits.writeto(filebase+'_cps.fits',cps,overwrite='True')
-    pyfits.writeto(filebase+'_cpcov.fits',cov,overwrite='True')
     return np.array([bs_all,cps,Tas,cov,var,stdE])
 
 def calc_cps_pavg(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=False,filebase='',redo_calc=False): #Master function
@@ -426,11 +429,12 @@ def calc_cps_pavg(ims,cdir,display=True,nx=256,ny=256,useW=True,save_allpix=Fals
     Tas = np.abs(np.mean(bs_all,axis=0))
     cps = np.angle(np.mean(bs_all,axis=0),deg=1)
     if save_allpix: fout.close()
-    if len(ims)>1: cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
+    if len(ims)>1: 
+        cov,var,stdE = gen_cov(cps,cas,W=Aas,useW=useW) 
+        pyfits.writeto(filebase+'_bspecs.fits',np.array([np.real(bs_all),np.imag(bs_all)]),overwrite='True')
+        pyfits.writeto(filebase+'_cps.fits',cps,overwrite='True')
+        pyfits.writeto(filebase+'_cpcov.fits',cov,overwrite='True')
     else: cov,var,stdE = None,None,None
-    pyfits.writeto(filebase+'_bspecs.fits',np.array([np.real(bs_all),np.imag(bs_all)]),overwrite='True')
-    pyfits.writeto(filebase+'_cps.fits',cps,overwrite='True')
-    pyfits.writeto(filebase+'_cpcov.fits',cov,overwrite='True')
     return np.array([bs_all,cps,Tas,cov,var,stdE])
 
 
@@ -741,7 +745,7 @@ def calc_v2s_single(ims,mdir,nx=256,ny=256,display=False):
     else: cov,var,stdE = None,None,None
     return np.array([v2m, cov, var, stdE, v2sc, amps, vun, vbs])
 
-def calc_cvis(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filename='',
+def calc_cvis(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filebase='',
               subpixel=False,write_FTs=False):
     """
     calculates visibility amplitudes and phases for a stack of images
@@ -750,7 +754,7 @@ def calc_cvis(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filename=''
     bcs = np.array(bcs)
     m=mask_sig_pspec(mdir,nx,ny)
     if save_allpix:
-        fout = h5py.File(filename+'.hdf5', 'w')
+        fout = h5py.File(filebase+'_cvis.hdf5', 'w')
     vcs = []
     vbs = []
     pall = np.zeros([ny,nx])
@@ -797,8 +801,8 @@ def calc_cvis(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filename=''
                 fout['int'+str(imcount)+'/cvis'+str(bb)] = tmpall[bb] ###all pixels for one baseline
             fout['int'+str(imcount)+'/bias']=vbs[-1] ####bias values to subtract for each baseline
             fout['int'+str(imcount)+'/zsp'] = FT[ny//2,nx//2]
-        if write_FTs==True:
-            fout['int'+str(imcount)+'/FT']=FT
+            if write_FTs==True:
+                fout['int'+str(imcount)+'/FT']=FT
         imcount+=1
         #if imcount==9:
         #    FTt = FT
@@ -807,7 +811,7 @@ def calc_cvis(ims,mdir,nx=256,ny=256,display=False,save_allpix=False,filename=''
         plt.subplots_adjust(right = 0.99,left = 0.02,bottom=0.04, top = 0.95)
         plt.title(mdir)
         #plt.imshow(pall**0.1,origin='lower')
-        cpl = plt.imshow(np.angle(FT,deg=1),origin='lower')
+        cpl = plt.imshow(np.abs(FT),origin='lower')
         plt.colorbar(cpl)
         for x in range(len(bcs)):
             plt.scatter(bcs[x][:,0],bcs[x][:,1],edgecolors='k',facecolors='none')
